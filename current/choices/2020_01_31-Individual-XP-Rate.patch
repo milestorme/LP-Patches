@@ -1,7 +1,7 @@
-From fc45864a6c7451884a74e321065e448e3b2c63f7 Mon Sep 17 00:00:00 2001
-From: Lord Psyan <lordpsyan@ircundernet.com>
-Date: Tue, 11 Jun 2019 22:51:26 -0500
-Subject: [PATCH] 2019_06_11-Individual-XP-Rate
+From ade88b9ffaacebbc16887f9358718dae693668dc Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Fri, 31 Jan 2020 07:37:00 -0600
+Subject: [PATCH] 2020_01_31-Individual-XP-Rate
 
 ---
  .../auth/auth.individualXPrate.sql            |  5 ++
@@ -43,10 +43,10 @@ index 0000000000..38cba0e61d
 +INSERT INTO `command` VALUES ('modify xpkill', '1010', 'Syntax: .modify xpkill #wert');
 +INSERT INTO `command` VALUES ('modify xpquest', '1011', 'Syntax: .modify xpquest #wert');
 diff --git a/src/server/game/Accounts/RBAC.h b/src/server/game/Accounts/RBAC.h
-index 4e3e3bbdd8..10a218bbcd 100644
+index 0410f5f7a1..cee0c5e69e 100644
 --- a/src/server/game/Accounts/RBAC.h
 +++ b/src/server/game/Accounts/RBAC.h
-@@ -781,7 +781,8 @@ enum RBACPermissions
+@@ -790,7 +790,8 @@ enum RBACPermissions
      // 02
      // 03
      // 04
@@ -57,10 +57,10 @@ index 4e3e3bbdd8..10a218bbcd 100644
      // 07
      // 08
 diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
-index 80f070baa9..99e475b490 100644
+index 30444f2f2f..83a9207f66 100644
 --- a/src/server/game/Entities/Player/Player.cpp
 +++ b/src/server/game/Entities/Player/Player.cpp
-@@ -427,6 +427,10 @@ Player::Player(WorldSession* session): Unit(true)
+@@ -428,6 +428,10 @@ Player::Player(WorldSession* session): Unit(true)
      m_reputationMgr = new ReputationMgr(this);
  
      m_groupUpdateTimer.Reset(5000);
@@ -71,16 +71,16 @@ index 80f070baa9..99e475b490 100644
  }
  
  Player::~Player()
-@@ -15195,7 +15199,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver,
+@@ -15226,7 +15230,7 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver,
      bool rewarded = IsQuestRewarded(quest_id) && !quest->IsDFQuest();
  
      // Not give XP in case already completed once repeatable quest
--    uint32 XP = rewarded ? 0 : uint32(quest->XPValue(this)*sWorld->getRate(RATE_XP_QUEST));
-+    uint32 XP = rewarded ? 0 : uint32(quest->XPValue(this)*(_individual_quest > 0 ? _individual_quest : sWorld->getRate(RATE_XP_QUEST)));
+-    uint32 XP = rewarded ? 0 : uint32(quest->GetXPReward(this)*sWorld->getRate(RATE_XP_QUEST));
++    uint32 XP = rewarded ? 0 : uint32(quest->GetXPReward(this)*(_individual_quest > 0 ? _individual_quest : sWorld->getRate(RATE_XP_QUEST)));
  
      // handle SPELL_AURA_MOD_XP_QUEST_PCT auras
      XP *= GetTotalAuraMultiplier(SPELL_AURA_MOD_XP_QUEST_PCT);
-@@ -26695,6 +26699,25 @@ Pet* Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetTy
+@@ -26835,6 +26839,25 @@ Pet* Player::SummonPet(uint32 entry, float x, float y, float z, float ang, PetTy
      return pet;
  }
  
@@ -107,10 +107,10 @@ index 80f070baa9..99e475b490 100644
  {
      WorldPacket data(SMSG_SUPERCEDED_SPELL, 8);
 diff --git a/src/server/game/Entities/Player/Player.h b/src/server/game/Entities/Player/Player.h
-index f899584775..07165ef27d 100644
+index aebd7bf358..8ef4ed7020 100644
 --- a/src/server/game/Entities/Player/Player.h
 +++ b/src/server/game/Entities/Player/Player.h
-@@ -825,6 +825,13 @@ enum PlayerCommandStates
+@@ -823,6 +823,13 @@ enum PlayerCommandStates
      CHEAT_WATERWALK = 0x10
  };
  
@@ -124,7 +124,7 @@ index f899584775..07165ef27d 100644
  class Player;
  
  /// Holder for Battleground data
-@@ -2151,7 +2158,10 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
+@@ -2171,7 +2178,10 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
      // Prepatch by LordPsyan
      // 01
      // 02
@@ -136,7 +136,7 @@ index f899584775..07165ef27d 100644
      // 04
      // 05
      // 06
-@@ -2500,7 +2510,9 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
+@@ -2520,7 +2530,9 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
          // Prepatch by LordPsyan
          // 21
          // 22
@@ -148,10 +148,10 @@ index f899584775..07165ef27d 100644
          // 25
          // 26
 diff --git a/src/server/game/Miscellaneous/Formulas.h b/src/server/game/Miscellaneous/Formulas.h
-index 8040068f38..d1531205cc 100644
+index eb5e70bb6c..4bf0cad6de 100644
 --- a/src/server/game/Miscellaneous/Formulas.h
 +++ b/src/server/game/Miscellaneous/Formulas.h
-@@ -225,7 +225,9 @@ namespace Trinity
+@@ -224,7 +224,9 @@ namespace Trinity
                      // 22
                      // 23
                      // 24
@@ -163,10 +163,10 @@ index 8040068f38..d1531205cc 100644
                      // 27
                      // 28
 diff --git a/src/server/game/Miscellaneous/Language.h b/src/server/game/Miscellaneous/Language.h
-index d5194e06c9..61bde69ccb 100644
+index c1c9d2e793..922243ee2e 100644
 --- a/src/server/game/Miscellaneous/Language.h
 +++ b/src/server/game/Miscellaneous/Language.h
-@@ -1142,7 +1142,12 @@ enum TrinityStrings
+@@ -1161,7 +1161,12 @@ enum TrinityStrings
      // 08
      // 09
      // 10
@@ -181,7 +181,7 @@ index d5194e06c9..61bde69ccb 100644
      // 13
      // 14
 diff --git a/src/server/scripts/Commands/cs_modify.cpp b/src/server/scripts/Commands/cs_modify.cpp
-index 8a669557f8..2b04a24602 100644
+index 97a4777a33..d61d762ed9 100644
 --- a/src/server/scripts/Commands/cs_modify.cpp
 +++ b/src/server/scripts/Commands/cs_modify.cpp
 @@ -73,6 +73,8 @@ public:
@@ -263,5 +263,5 @@ index 8a669557f8..2b04a24602 100644
  
  void AddSC_modify_commandscript()
 -- 
-2.21.0
+2.20.1
 
