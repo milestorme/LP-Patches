@@ -1,5 +1,7 @@
-Feel free to make a donation to help pay server costs.
-[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=ANXSLKM5JRYT6)
+All of these patches are compiled on Debian Linux. THey are tested for patchability and fully compiled before being added to the repository.
+If you are having issues in windows, get Linux Tools and use the patch commands. For help, check out my youtube channel for tutorials on patching properly.
+
+YouTube: https://www.youtube.com/channel/UC5dtyqE5jGkVmuHo5dosHPQ
 
 Official test server:
 set realmlist logon.realmsofwarcraft.com
