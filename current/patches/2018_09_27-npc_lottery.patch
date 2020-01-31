@@ -1,0 +1,536 @@
+From f032d8e48b13604165769ec8e453a373eae598ed Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Mon, 1 Oct 2018 10:27:34 -0500
+Subject: [PATCH] 2018_09_27-npc_lottery
+
+---
+ .../characters/characters.npclottery.sql           |   1 +
+ sql/LordPsyan-Patches/world/world.npclottery.sql   |  63 ++++
+ src/server/game/Miscellaneous/Language.h           |   6 +-
+ src/server/scripts/Custom/custom_script_loader.cpp |   6 +-
+ src/server/scripts/Custom/npc_lottery.cpp          | 393 +++++++++++++++++++++
+ 5 files changed, 464 insertions(+), 5 deletions(-)
+ create mode 100644 sql/LordPsyan-Patches/characters/characters.npclottery.sql
+ create mode 100644 sql/LordPsyan-Patches/world/world.npclottery.sql
+ create mode 100644 src/server/scripts/Custom/npc_lottery.cpp
+
+diff --git a/sql/LordPsyan-Patches/characters/characters.npclottery.sql b/sql/LordPsyan-Patches/characters/characters.npclottery.sql
+new file mode 100644
+index 0000000000..f1314613c4
+--- /dev/null
++++ b/sql/LordPsyan-Patches/characters/characters.npclottery.sql
+@@ -0,0 +1 @@
++REPLACE INTO `mail` (`id`, `messageType`, `stationery`, `mailTemplateId`, `sender`, `receiver`, `subject`, `has_items`, `expire_time`, `deliver_time`, `money`, `cod`, `checked`) VALUES (60003, 0, 41, 0, 0, 0, 'Money For You!', 0, 0, 0, 4294967295, 0, 1);
+diff --git a/sql/LordPsyan-Patches/world/world.npclottery.sql b/sql/LordPsyan-Patches/world/world.npclottery.sql
+new file mode 100644
+index 0000000000..0746d79bfb
+--- /dev/null
++++ b/sql/LordPsyan-Patches/world/world.npclottery.sql
+@@ -0,0 +1,63 @@
++DROP TABLE IF EXISTS `lottery_winners`;
++CREATE TABLE `lottery_winners` (
++  `id` int(10) unsigned NOT NULL,
++  `name` varchar(12) NOT NULL,
++  `guid` int(10) unsigned NOT NULL DEFAULT '0',
++  `bet` longtext NOT NULL,
++  `betPoints` int(10) unsigned NOT NULL DEFAULT '0',
++  `time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
++) ENGINE=MyISAM DEFAULT CHARSET=utf8;
++
++DROP TABLE IF EXISTS `lottery_bets`;
++CREATE TABLE `lottery_bets` (
++  `id` int(10) unsigned NOT NULL DEFAULT '1',
++  `name` varchar(12) NOT NULL,
++  `guid` int(10) unsigned NOT NULL DEFAULT '0',
++  `bet` longtext NOT NULL,
++  `time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  PRIMARY KEY (`id`)
++) ENGINE=MyISAM DEFAULT CHARSET=utf8;
++
++DROP TABLE IF EXISTS `lottery`;
++CREATE TABLE `lottery` (
++  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
++  `numbers` longtext NOT NULL,
++  `jackpot` int(10) unsigned NOT NULL DEFAULT '0',
++  `time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  PRIMARY KEY (`id`)
++) ENGINE=MyISAM AUTO_INCREMENT=1 DEFAULT CHARSET=utf8;
++
++-- Updates
++-- WARNING! It's changes official blizz data!
++UPDATE `creature_template` SET `faction`=35 WHERE `entry` IN(28474, 914, 23128, 17204, 5115, 4584, 16655, 28958, 4090, 23534);
++
++-- Inserts
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80000, 'Sorry, you are not VIP member.', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80001, 'Welcome Dear VIP.', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80006, 'Your skills are set to max.', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80007, 'It\'s Time To choose!', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80010, 'Donation help text', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80011, 'Normal help text', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80012, 'Ingame help text', NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80013, 'You Don\'t have resurrection sickness!', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80014, 'You Don\'t have a pet!', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, 1);
++REPLACE INTO `npc_text` (`ID`, `text0_0`, `text0_1`, `lang0`, `Probability0`, `em0_0`, `em0_1`, `em0_2`, `em0_3`, `em0_4`, `em0_5`, `text1_0`, `text1_1`, `lang1`, `Probability1`, `em1_0`, `em1_1`, `em1_2`, `em1_3`, `em1_4`, `em1_5`, `text2_0`, `text2_1`, `lang2`, `Probability2`, `em2_0`, `em2_1`, `em2_2`, `em2_3`, `em2_4`, `em2_5`, `text3_0`, `text3_1`, `lang3`, `Probability3`, `em3_0`, `em3_1`, `em3_2`, `em3_3`, `em3_4`, `em3_5`, `text4_0`, `text4_1`, `lang4`, `Probability4`, `em4_0`, `em4_1`, `em4_2`, `em4_3`, `em4_4`, `em4_5`, `text5_0`, `text5_1`, `lang5`, `Probability5`, `em5_0`, `em5_1`, `em5_2`, `em5_3`, `em5_4`, `em5_5`, `text6_0`, `text6_1`, `lang6`, `Probability6`, `em6_0`, `em6_1`, `em6_2`, `em6_3`, `em6_4`, `em6_5`, `text7_0`, `text7_1`, `lang7`, `Probability7`, `em7_0`, `em7_1`, `em7_2`, `em7_3`, `em7_4`, `em7_5`, `VerifiedBuild`) VALUES (80016, 'Welcome! My Name is AIO. What can I help for you?', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0, 0, 0, 0, 0, 0, 0, 0, 1);
++
++REPLACE INTO `game_event` (`eventEntry`, `start_time`, `end_time`, `occurence`, `length`, `holiday`, `description`, `world_event`, `announce`) VALUES
++(132, '2013-08-21 20:00:00', '2020-12-31 06:00:00', 1440, 1, 0, 'Lottery', 0, 2);
++
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (998, '|cffff0000<Announcer>: Join Warsong Guilch!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (999, '|cffff0000<Announcer>: Join Wintergrasp!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (997, '|cffff0000<Announcer>: Join Arathi Basin!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (996, '|cffff0000<Announcer>: Join Eye of the Storm!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (995, '|cffff0000<Announcer>: Join Random Battleground!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (994, '|cffff0000<Announcer>: Join Arena 2v2!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (993, '|cffff0000<Announcer>: Join Arena 3v3!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (992, '|cffff0000<Announcer>: Join Arena 5v5!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (991, '|cffff0000<Announcer>: Join Alterac Valley!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++REPLACE INTO `trinity_string` (`entry`, `content_default`, `content_loc1`, `content_loc2`, `content_loc3`, `content_loc4`, `content_loc5`, `content_loc6`, `content_loc7`, `content_loc8`) VALUES (990, '|cffff0000<Announcer>: Join Strand of the Ancients!', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
++
++-- Creature_template entry. Make sure entry number does not conflict.
++REPLACE INTO `creature_template` (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `modelid1`, `modelid2`, `modelid3`, `modelid4`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `scale`, `rank`, `dmgschool`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `trainer_type`, `trainer_spell`, `trainer_class`, `trainer_race`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `resistance1`, `resistance2`, `resistance3`, `resistance4`, `resistance5`, `resistance6`, `spell1`, `spell2`, `spell3`, `spell4`, `spell5`, `spell6`, `spell7`, `spell8`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `DamageModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `mechanic_immune_mask`, `flags_extra`, `ScriptName`, `VerifiedBuild`) values
++('80000','0','0','0','0','0','2591','0','0','0','Young Woman','You need it, I got it.','','0','80','80','0','35','1','1','1.14286','1','1','0','1500','0','1','1','1','0','2048','0','0','0','0','0','0','7','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','','0','1','1','1','1','1','1','0','0','1','0','0','npc_lottery','0');
++-- end
+diff --git a/src/server/game/Miscellaneous/Language.h b/src/server/game/Miscellaneous/Language.h
+index 5663ae4b65..527cd34dd6 100644
+--- a/src/server/game/Miscellaneous/Language.h
++++ b/src/server/game/Miscellaneous/Language.h
+@@ -1225,9 +1225,9 @@ enum TrinityStrings
+     // 35
+     // 36
+     // 37
+-    // 38
+-    // 39
+-    // 40
++   LANG_LOTTERY_ANNOUNCE_JACKPOT = 11010,
++   LANG_LOTTERY_ANNOUNCE_JACKPOT_M_PLAYERS = 11011,
++   LANG_LOTTERY_ANNOUNCE = 11012
+     // Visit http://www.realmsofwarcraft.com/bb for forums and information
+     //
+     // End of prepatch
+diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
+index 5412cf1942..3bb29a4700 100644
+--- a/src/server/scripts/Custom/custom_script_loader.cpp
++++ b/src/server/scripts/Custom/custom_script_loader.cpp
+@@ -162,7 +162,8 @@
+ // start144
+ // start145
+ // start146
+-// start147
++// Lottery NPC
++    void AddSC_npc_lottery();
+ // start148
+ // start149
+ // start150
+@@ -367,7 +368,8 @@ void AddCustomScripts()
+ // end144
+ // end145
+ // end146
+-// end147
++// Lottery NPC
++AddSC_npc_lottery();
+ // end148
+ // end149
+ // end150
+diff --git a/src/server/scripts/Custom/npc_lottery.cpp b/src/server/scripts/Custom/npc_lottery.cpp
+new file mode 100644
+index 0000000000..507049fb7c
+--- /dev/null
++++ b/src/server/scripts/Custom/npc_lottery.cpp
+@@ -0,0 +1,393 @@
++/*
++ * Copyright (C) 2013 Emu-Devstore <http://emu-devstore.com/>
++ * Written by Teiby <http://www.teiby.de/>
++ * Broken and completely screwed up by LordPsyan <http://www.realmsofwarcraft.com/>
++ */
++
++#include "Config.h"
++#include "ScriptMgr.h"
++#include "ScriptedCreature.h"
++#include "ScriptedGossip.h"
++#include "GameEventMgr.h"
++#include "Player.h"
++#include "WorldSession.h"
++#include "DatabaseEnv.h"
++#include "DBCStores.h"
++#include "Language.h"
++#include "World.h"
++#include "Mail.h"
++
++#define EVENT_LOTTERY         132           // Use '.event start 132' or '.event stop 132' to start and stop manually. Event will start automatically every 24h (08:00pm)
++
++#define LOTTERY_ENABLE        true
++#define LOTTERY_MINLVL        1
++#define LOTTERY_BETCOST       10 * 10000    // 10 Gold
++#define LOTTERY_MAXNUMBER     30            // 1 - 30
++#define LOTTERY_FIELDS        5             // how many numbers? (e.g. '5 10 22 3 25')
++#define LOTTERY_BETCOUNT      1             // how many bets each player?
++
++
++class npc_lottery : public CreatureScript
++{
++public:
++    npc_lottery() : CreatureScript("npc_lottery") { }
++
++    static bool OnGossipHello(Player* player, Creature* pCreature)
++    {
++        if (player && LOTTERY_ENABLE)
++        {
++            if (player->getLevel() >= uint32(LOTTERY_MINLVL) && player->GetMoney() >= uint32(LOTTERY_BETCOST))
++            {
++                std::stringstream str;
++                str << "Want to try your luck? " << LOTTERY_FIELDS << " Numbers between 1 and " << LOTTERY_MAXNUMBER << " (with spaces), pay " << (uint32)(LOTTERY_BETCOST*0.0001f) << " Gold and wait for the draw (20:00).";
++                str << " You can only buy " << LOTTERY_BETCOUNT << " lot" << (LOTTERY_BETCOUNT > 1 ? "s." : ".");
++
++
++                pCreature->Whisper(str.str().c_str(), LANG_UNIVERSAL, player);
++                AddGossipItemFor(player, 0, "Buy one lot", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF, "", 0, true);
++                AddGossipItemFor(player, GOSSIP_ICON_CHAT, "Script Info", GOSSIP_SENDER_MAIN, 9998);
++                SendGossipMenuFor(player, player->GetGossipTextId(pCreature), pCreature->GetGUID());
++            }
++            else
++           {
++                std::stringstream str;
++                str << "You need " << LOTTERY_MINLVL << " Gold and Level " << (uint32)(LOTTERY_BETCOST*0.0001f) << "+ to buy a lot.";
++                pCreature->Whisper(str.str().c_str(), LANG_UNIVERSAL, player);
++            }
++        }
++        return true;
++    }
++
++    static bool OnGossipSelectCode(Player* player, Creature* pCreature, uint32 uiSender, uint32 uiAction, const char* code)
++    {
++        player->PlayerTalkClass->ClearMenus();
++       if (uiSender == GOSSIP_SENDER_MAIN)
++        {
++            switch (uiAction)
++           {
++                case GOSSIP_ACTION_INFO_DEF:
++                {
++                   char * charCode = (char*)code;
++                    std::string strCode = (char*)code;
++                    char * tmp;
++                   int32 number[LOTTERY_FIELDS];
++                    std::stringstream error;
++                    error << "You have entered a wrong number. You need to " << LOTTERY_FIELDS << " Number (with spaces) between 1 - " << LOTTERY_MAXNUMBER << "enter.";
++                    std::string errordub = ("Du hast schon getipt");
++                    std::string sNumbers;
++
++
++                    QueryResult pBetGuid = WorldDatabase.PQuery("SELECT COUNT(*) FROM lottery_bets WHERE guid = %u", player->GetGUID().GetCounter());
++                    if (pBetGuid && pBetGuid->Fetch()->GetUInt32() >= LOTTERY_BETCOUNT)
++                    {
++                        pCreature->Whisper(errordub.c_str(), LANG_UNIVERSAL, player);
++                        CloseGossipMenuFor(player);
++                        return false;
++                    }
++
++
++                    tmp = strtok (charCode," ");
++                    for (int8 n = 0; n < LOTTERY_FIELDS; n++)
++                    {
++                        if (tmp != NULL)
++                        {
++                            number[n] = atoi(tmp);
++                            if (number[n] <= 0 || number[n] > LOTTERY_MAXNUMBER)
++                            {
++                                pCreature->Whisper(error.str().c_str(), LANG_UNIVERSAL, player);
++                                CloseGossipMenuFor(player);
++                                return false;
++                            }
++                            tmp = strtok (NULL, " ");
++                        }
++                        else
++                        {
++                            pCreature->Whisper(error.str().c_str(), LANG_UNIVERSAL, player);
++                            CloseGossipMenuFor(player);
++                            return false;
++                        }
++                    }
++
++                    std::stringstream ssNumber;
++                    for(int i = 0; i < LOTTERY_FIELDS; i++)
++                    {
++                        ssNumber << number[i];
++
++                        if(i < LOTTERY_FIELDS-1)
++                            ssNumber << " ";
++                    }
++
++                    sNumbers = "You have typed the following numbers: " + ssNumber.str();
++
++                    uint32 betMaxID = 0;
++                    QueryResult qbetMaxID = WorldDatabase.Query("SELECT MAX(id) FROM lottery_bets");
++
++                    if (qbetMaxID)
++                        betMaxID = qbetMaxID->Fetch()->GetUInt32();
++
++                    WorldDatabase.PExecute("INSERT INTO lottery_bets (id, name, guid, bet) VALUES ('%u', '%s', '%u', '%s');", betMaxID+1, player->GetName().c_str(), player->GetGUID().GetCounter(), ssNumber.str().c_str());
++                    pCreature->Whisper(sNumbers.c_str(), LANG_UNIVERSAL, player);
++                    player->ModifyMoney(-LOTTERY_BETCOST);
++
++                    CloseGossipMenuFor(player);
++
++                    return true;
++                }
++            }
++        }
++
++        return false;
++    }
++
++    static bool OnGossipSelect(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
++    {
++        if(uiAction == 9998) // Script Info
++        {
++            AddGossipItemFor(pPlayer, GOSSIP_ICON_CHAT, "Developed by: Tenby. Updated by LordPsyan", GOSSIP_SENDER_MAIN, 9999);
++            AddGossipItemFor(pPlayer, GOSSIP_ICON_CHAT, "Website: www.realmsofwarcraft.com", GOSSIP_SENDER_MAIN, 9999);
++            AddGossipItemFor(pPlayer, GOSSIP_ICON_CHAT, "Version: 1.2", GOSSIP_SENDER_MAIN, 9999);
++            AddGossipItemFor(pPlayer, GOSSIP_ICON_CHAT, "<-- Back", GOSSIP_SENDER_MAIN, 9999);
++            SendGossipMenuFor(pPlayer, 68, pCreature->GetGUID());
++        }
++        else if(uiAction == 9999)
++        {
++            pPlayer->PlayerTalkClass->ClearMenus();
++            OnGossipHello(pPlayer, pCreature);
++        }
++
++        return true;
++    }
++/*
++    CreatureAI* GetAI(Creature* pCreature) const
++    {
++        return new npc_lotteryAI (pCreature);
++    }
++*/
++    struct npc_lotteryAI : public ScriptedAI
++    {
++        npc_lotteryAI(Creature* pCreature) : ScriptedAI(pCreature) { }
++
++        struct sWinner
++        {
++            uint32 guid;
++            std::string name;
++            std::string bets;
++            uint32 points;
++        };
++
++        void UpdateAI(uint32 diff)
++        {
++            if (IsEventActive(EVENT_LOTTERY))
++            {
++                if (me->IsVisible())
++                {
++                    QueryResult qMaxID = WorldDatabase.Query("SELECT MAX(id) FROM lottery_bets");
++                    if (!qMaxID)
++                    {
++                        me->SetVisible(false);
++                        return;
++                    }
++
++                    uint32 betMaxID = qMaxID->Fetch()->GetUInt32();
++                    uint32 luckyNumber[LOTTERY_FIELDS];
++                    std::stringstream sLuckyNumber;
++                    uint32 lotteryID;
++                    const uint32 stakes = betMaxID * LOTTERY_BETCOST * 0.7f; // 70% (rest is added to the jackpot)
++
++                    uint32 winnerCount[LOTTERY_FIELDS];
++
++                    typedef std::list<sWinner> tdJW;
++                    tdJW lJackpotWinners;
++                    tdJW lWinners;
++
++                    SQLTransaction ctrans = CharacterDatabase.BeginTransaction();
++                    SQLTransaction wtrans = WorldDatabase.BeginTransaction();
++
++                    for(int i = 0; i < LOTTERY_FIELDS; i++)
++                        winnerCount[i] = 0;
++
++                    QueryResult qlotteryID = WorldDatabase.Query("SELECT MAX(id) FROM lottery");
++                    if (!qlotteryID)
++                        lotteryID = 0;
++                    else
++                        lotteryID = qlotteryID->Fetch()->GetUInt32();
++
++                    QueryResult qBets  = WorldDatabase.Query("SELECT guid, bet, name FROM lottery_bets");
++                    if (qBets)
++                    {
++                        for (int8 n = 0; n < LOTTERY_FIELDS; n++)
++                            luckyNumber[n] = urand(1, LOTTERY_MAXNUMBER);
++
++                        for(int i = 0; i < LOTTERY_FIELDS; i++)
++                        {
++                            sLuckyNumber << luckyNumber[i];
++
++                            if(i < LOTTERY_FIELDS-1)
++                                sLuckyNumber << " ";
++                        }
++
++                        do
++                        {
++                            Field *fBets = qBets->Fetch();
++                            uint32 guid = fBets[0].GetUInt32();
++                            std::string bet = fBets[1].GetString();
++                            std::string rBet = bet;
++                            std::string name = fBets[2].GetString();
++                            uint32 points = 0;
++
++                            int32 number[LOTTERY_FIELDS];
++                            char * tmp;
++
++                            tmp = strtok ((char*)bet.c_str()," ");
++
++                            for (int8 n = 0; n < LOTTERY_FIELDS; ++n)
++                            {
++                                if (tmp != NULL)
++                                {
++                                    number[n] = atoi(tmp);
++                                    tmp = strtok (NULL, " ");
++                                }
++                            }
++
++                            for (int8 n = 0; n < LOTTERY_FIELDS; ++n)
++                                for (int8 i = 0; i < LOTTERY_FIELDS; ++i)
++                                    if (number[i] == luckyNumber[n])
++                                    {
++                                        points++;
++                                        number[i] = 0;
++                                        break;
++                                    }
++
++                            if(points == 0)
++                                continue;
++
++                            sWinner winner;
++                            winner.guid = guid;
++                            winner.bets = rBet;
++                            winner.name = name;
++                            winner.points = points;
++
++                            if(points == LOTTERY_FIELDS)
++                                lJackpotWinners.push_back(winner);
++                            else
++                                lWinners.push_back(winner);
++
++                            winnerCount[points-1]++;
++
++                        } while (qBets->NextRow());
++
++
++                        for(tdJW::const_iterator itr = lWinners.begin(); itr != lWinners.end(); itr++)
++                        {
++                            uint32 cash = stakes / pow(2, LOTTERY_FIELDS - itr->points) / winnerCount[itr->points-1];
++
++                            std::stringstream text;
++                            text << "Congratulations you have typed the correct numbers!\n\n";
++                            text << "Dein Los: " << itr->bets.c_str() << "\n";
++                            text << "Lotto Results: " << sLuckyNumber.str().c_str() << "\n\n";
++                            text << "Hits: " << itr->points << "\n";
++                            text << "Sum of bets with " << itr->points << " hits: " << winnerCount[itr->points-1];
++
++                            Player *pWinner = ObjectAccessor::FindPlayerByLowGUID(itr->guid);
++                            MailDraft("Won", text.str())
++                                .AddMoney(cash)
++                                .SendMailTo(ctrans, MailReceiver(pWinner, itr->guid), MailSender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM));
++
++                            wtrans->PAppend("INSERT INTO lottery_winners (id, name, guid, bet, betPoints) VALUES ('%u', '%s', '%u', '%s', '%u')", lotteryID+1, itr->name.c_str(), itr->guid, itr->bets.c_str(), itr->points);
++                        }
++
++                        uint32 jackpot;
++                        QueryResult qJackpot  = WorldDatabase.PQuery("SELECT jackpot FROM lottery WHERE id = '%u'", lotteryID);
++                        if (qJackpot)
++                            jackpot = qJackpot->Fetch()->GetUInt32();
++                        else
++                            jackpot = 0;
++
++                        jackpot += betMaxID * LOTTERY_BETCOST * 0.3f; // 30%
++
++                        for(int i = 0; i < LOTTERY_FIELDS-1; i++)
++                        {
++                            if(winnerCount[i] == 0)
++                                jackpot += stakes / pow(2, LOTTERY_FIELDS-i-1); // Add money to jackpot if there are no winners
++                        }
++
++                        if (winnerCount[LOTTERY_FIELDS-1] > 0)
++                        {
++                            jackpot /= winnerCount[LOTTERY_FIELDS-1];
++
++                            for(tdJW::const_iterator itr = lJackpotWinners.begin(); itr != lJackpotWinners.end(); itr++)
++                            {
++                                std::stringstream text;
++                                text << "Congratulations you've hit the jackpot\n\n";
++                                text << "Dein Los: " << itr->bets.c_str() << "\n";
++                                text << "Lotto Results: " << sLuckyNumber.str().c_str() << "\n\n";
++                                text << "Hits: " << itr->points << "\n";
++                                text << "Sum of bets with " << itr->points << " hits: " << winnerCount[itr->points-1];
++
++                                Player *pJPWinner = ObjectAccessor::FindPlayerByLowGUID(itr->guid);
++                                MailDraft("Jackpot!", text.str())
++                                    .AddMoney(jackpot)
++                                    .SendMailTo(ctrans, MailReceiver(pJPWinner, itr->guid), MailSender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM));
++                            }
++
++                            if (winnerCount[LOTTERY_FIELDS-1] == 1)
++                                sWorld->SendWorldText(LANG_LOTTERY_ANNOUNCE_JACKPOT, betMaxID, sLuckyNumber.str().c_str(), lJackpotWinners.begin()->name.c_str(), uint32(jackpot * 0.0001f));
++                            else
++                                sWorld->SendWorldText(LANG_LOTTERY_ANNOUNCE_JACKPOT_M_PLAYERS, betMaxID, sLuckyNumber.str().c_str(), winnerCount[LOTTERY_FIELDS-1], uint32(jackpot * 0.0001f));
++
++                            jackpot = 0;
++                        }
++                        else
++                        {
++                            sWorld->SendWorldText(LANG_LOTTERY_ANNOUNCE, betMaxID, sLuckyNumber.str().c_str(), uint32(jackpot * 0.0001f));
++                        }
++
++                        wtrans->PAppend("INSERT INTO lottery (numbers, jackpot) VALUES ('%s', '%u')", sLuckyNumber.str().c_str(), jackpot);
++                        wtrans->PAppend("DELETE FROM lottery_bets");
++
++                        WorldDatabase.CommitTransaction(wtrans);
++                        CharacterDatabase.CommitTransaction(ctrans);
++
++                        me->SetVisible(false);
++                    }
++                }
++            }
++            else
++            {
++                if (!me->IsVisible())
++                    me->SetVisible(true);
++            }
++        }
++    };
++
++    struct MyAI : public ScriptedAI
++        {
++            MyAI(Creature* m_creature) : ScriptedAI(m_creature) { }
++            bool GossipHello(Player* player) override
++            {
++                return OnGossipHello(player, me);
++            }
++            bool GossipSelect(Player* player, uint32 menuId, uint32 gossipListId) override
++            {
++                uint32 sender = player->PlayerTalkClass->GetGossipOptionSender(gossipListId);
++                uint32 action = player->PlayerTalkClass->GetGossipOptionAction(gossipListId);
++                return OnGossipSelect(player, me, sender, action);
++            }
++            bool GossipSelectCode(Player* player, uint32 menuId, uint32 gossipListId, char const* code) override
++            {
++                uint32 sender = player->PlayerTalkClass->GetGossipOptionSender(gossipListId);
++                uint32 action = player->PlayerTalkClass->GetGossipOptionAction(gossipListId);
++                return OnGossipSelectCode(player, me, sender, action, code);
++            }
++        };
++
++    CreatureAI* GetAI(Creature* m_creature) const override
++        {
++            return new MyAI(m_creature);
++        }
++};
++
++void AddSC_npc_lottery()
++{
++    new npc_lottery;
++}
+\ No newline at end of file
+-- 
+2.11.0
+

@@ -1,0 +1,223 @@
+From 34261a18fc3be1e59f610f4c8b8e7a0741d72866 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Wed, 3 Oct 2018 04:57:33 -0500
+Subject: [PATCH] 2018_09_27-WorldChat
+
+---
+ .../WorldChat/auth.worldchat.sql                   |   5 +
+ src/common/Common.h                                |  15 ++-
+ src/server/game/Accounts/RBAC.h                    |   2 +-
+ src/server/scripts/Custom/WorldChat.cpp            | 123 +++++++++++++++++++++
+ src/server/scripts/Custom/custom_script_loader.cpp |   6 +-
+ 5 files changed, 143 insertions(+), 8 deletions(-)
+ create mode 100644 sql/TrinityCore-Patches/WorldChat/auth.worldchat.sql
+ create mode 100644 src/server/scripts/Custom/WorldChat.cpp
+
+diff --git a/sql/TrinityCore-Patches/WorldChat/auth.worldchat.sql b/sql/TrinityCore-Patches/WorldChat/auth.worldchat.sql
+new file mode 100644
+index 0000000000..256c0222eb
+--- /dev/null
++++ b/sql/TrinityCore-Patches/WorldChat/auth.worldchat.sql
+@@ -0,0 +1,5 @@
++INSERT INTO `rbac_permissions` (`id`, `name`) VALUES
++(1015, 'Command: world chat');
++
++INSERT INTO `rbac_linked_permissions` (`id`,`linkedId`) VALUES
++(195, 1015);
+\ No newline at end of file
+diff --git a/src/common/Common.h b/src/common/Common.h
+index 9fdcb78587..e4a8714223 100644
+--- a/src/common/Common.h
++++ b/src/common/Common.h
+@@ -74,11 +74,16 @@ enum TimeConstants
+ 
+ enum AccountTypes
+ {
+-    SEC_PLAYER         = 0,
+-    SEC_MODERATOR      = 1,
+-    SEC_GAMEMASTER     = 2,
+-    SEC_ADMINISTRATOR  = 3,
+-    SEC_CONSOLE        = 4                                  // must be always last in list, accounts must have less security level always also
++    SEC_PLAYER          = 0,
++    SEC_VIP             = 1,
++    SEC_MODERATOR       = 2,
++    SEC_GAMEMASTER      = 3,
++    SEC_EVENTM          = 4,
++    SEC_HEADGM          = 5,
++    SEC_DEVELOPER       = 6,
++    SEC_ADMINISTRATOR   = 7,
++    SEC_OWNER           = 8,
++    SEC_CONSOLE = 9 // must be always last in list, accounts must have less security level always also
+ };
+ 
+ enum LocaleConstant : uint8
+diff --git a/src/server/game/Accounts/RBAC.h b/src/server/game/Accounts/RBAC.h
+index f671cd0a25..8168069d61 100644
+--- a/src/server/game/Accounts/RBAC.h
++++ b/src/server/game/Accounts/RBAC.h
+@@ -795,7 +795,7 @@ enum RBACPermissions
+     // 17
+     // 18
+     // 19
+-    // 20
++    RBAC_PERM_COMMAND_WORLD_CHAT                             = 1015,
+     // Visit http://www.realmsofwarcraft.com/bb for forums and information
+     //
+     // End of prepatch
+diff --git a/src/server/scripts/Custom/WorldChat.cpp b/src/server/scripts/Custom/WorldChat.cpp
+new file mode 100644
+index 0000000000..e60343420a
+--- /dev/null
++++ b/src/server/scripts/Custom/WorldChat.cpp
+@@ -0,0 +1,123 @@
++/*
++<--------------------------------------------------------------------------->
++- Developer(s): Ghostcrawler336
++- Made By??
++- Complete: %0
++- ScriptName: 'World chat'
++- Comment: Untested ingame.
++<--------------------------------------------------------------------------->
++*/
++
++#include "Chat.h"
++#include "Common.h"
++#include "WorldSession.h"
++#include "World.h"
++#include "RBAC.h"
++
++/* Colors */
++#define MSG_COLOR_ORANGE "|cffFFA500"
++#define MSG_COLOR_DARKORANGE "|cffFF8C00"
++#define MSG_COLOR_RED "|cffFF0000"
++#define MSG_COLOR_LIGHTRED "|cffD63931"
++#define MSG_COLOR_ROYALBLUE "|cff4169E1"
++#define MSG_COLOR_LIGHTBLUE "|cffADD8E6"
++#define MSG_COLOR_YELLOW "|cffFFFF00"
++#define MSG_COLOR_GREEN "|cff008000"
++#define MSG_COLOR_PURPLE "|cffDA70D6"
++#define MSG_COLOR_WHITE  "|cffffffff"
++#define MSG_COLOR_SUBWHITE  "|cffbbbbbb"
++
++/* Ranks */
++#define ADMINISTRATOR "Admin"
++#define HEADGM "Head GM"
++#define GAMEMASTER "GM"
++#define DEVELOPER "Developer"
++#define OWNER "Owner"
++#define VIP "Vip"
++#define PLAYER "Player"
++#define EVENTM "Event Master"
++
++
++class World_Chat : public CommandScript
++{
++    public:
++    World_Chat() : CommandScript("World_Chat") { }
++
++    static bool HandleWorldChatCommand(ChatHandler * pChat, const char * msg)
++    {
++        if(!*msg)
++            return false;
++
++        Player * player = pChat->GetSession()->GetPlayer();
++        char message[1024];
++
++        switch(player->GetSession()->GetSecurity())
++        {
++            case SEC_PLAYER:
++                snprintf(message, 1024, "[World][Player][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_LIGHTBLUE, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_VIP:
++                snprintf(message, 1024, "[World][Vip][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_PURPLE, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_GAMEMASTER:
++                snprintf(message, 1024, "[World][GM][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(),  MSG_COLOR_YELLOW, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_EVENTM:
++                snprintf(message, 1024, "[World][Event Master][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_ORANGE, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_HEADGM:
++                snprintf(message, 1024, "[World][Head GM][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_GREEN, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++
++                case SEC_DEVELOPER:
++                snprintf(message, 1024, "[World][Developer][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_ROYALBLUE, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_ADMINISTRATOR:
++                snprintf(message, 1024, "[World][Admin][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_RED, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++                case SEC_OWNER:
++                snprintf(message, 1024, "[World][Owner][%s%s|r]: %s%s|r", MSG_COLOR_WHITE, player->GetName().c_str(), MSG_COLOR_RED, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++            case SEC_CONSOLE:
++                snprintf(message, 1024, "[World][%sAdministrator|r][%s%s|r]: %s%s|r", MSG_COLOR_RED, MSG_COLOR_LIGHTRED, player->GetName().c_str(),
++                    MSG_COLOR_LIGHTBLUE, msg);
++                sWorld->SendGlobalText(message, NULL);
++            break;
++
++
++
++
++        }
++        return true;
++    }
++
++    std::vector<ChatCommand> GetCommands() const override
++    {
++            static std::vector<ChatCommand> HandleWorldChatCommandTable =
++            {
++                { "world",  rbac::RBAC_PERM_COMMAND_WORLD_CHAT, true, &HandleWorldChatCommand, ""},
++            };
++            return HandleWorldChatCommandTable;
++    }
++};
++
++void AddSC_World_Chat()
++{
++        new World_Chat;
++}
+\ No newline at end of file
+diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
+index 5412cf1942..b737382583 100644
+--- a/src/server/scripts/Custom/custom_script_loader.cpp
++++ b/src/server/scripts/Custom/custom_script_loader.cpp
+@@ -96,7 +96,8 @@
+ // start78
+ // start79
+ // start80
+-// start81
++// World Chat
++void AddSC_World_Chat();
+ // start82
+ // start83
+ // start84
+@@ -301,7 +302,8 @@ void AddCustomScripts()
+ // end78
+ // end79
+ // end80
+-// end81
++// World Chat
++    AddSC_World_Chat();
+ // end82
+ // end83
+ // end84
+-- 
+2.11.0
+

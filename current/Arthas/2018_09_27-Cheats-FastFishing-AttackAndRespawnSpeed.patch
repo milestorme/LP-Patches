@@ -1,0 +1,262 @@
+From 829e1b594ad55599e2ccc28abb990b1466bed250 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Sat, 29 Sep 2018 12:26:40 -0500
+Subject: [PATCH] 2018_09_27-Cheats-FastFishing-AttackAndRespawnSpeed
+
+---
+ src/server/game/Entities/Creature/Creature.cpp |  2 +-
+ src/server/game/Entities/Player/Player.cpp     | 14 +++--
+ src/server/game/Entities/Unit/Unit.cpp         |  9 +++-
+ src/server/game/Spells/SpellEffects.cpp        |  3 ++
+ src/server/game/Spells/SpellInfo.cpp           |  6 ++-
+ src/server/game/World/World.cpp                |  8 ++-
+ src/server/game/World/World.h                  | 11 ++--
+ src/server/worldserver/worldserver.conf.dist   | 74 ++++++++++++++++++++++++++
+ 8 files changed, 115 insertions(+), 12 deletions(-)
+
+diff --git a/src/server/game/Entities/Creature/Creature.cpp b/src/server/game/Entities/Creature/Creature.cpp
+index 7cbb2e3d2b..01681a1f3a 100644
+--- a/src/server/game/Entities/Creature/Creature.cpp
++++ b/src/server/game/Entities/Creature/Creature.cpp
+@@ -1911,7 +1911,7 @@ void Creature::setDeathState(DeathState s)
+             if (IsDungeonBoss() && !m_respawnDelay)
+                 m_respawnTime = std::numeric_limits<time_t>::max(); // never respawn in this instance
+             else
+-                m_respawnTime = GameTime::GetGameTime() + respawnDelay + m_corpseDelay;
++                m_respawnTime = GameTime::GetGameTime() + (respawnDelay / sWorld->getFloatConfig(CONFIG_RESPAWNSPEED)) + m_corpseDelay;
+         }
+         else
+         {
+diff --git a/src/server/game/Entities/Player/Player.cpp b/src/server/game/Entities/Player/Player.cpp
+index 467fb9f23b..35625d3247 100644
+--- a/src/server/game/Entities/Player/Player.cpp
++++ b/src/server/game/Entities/Player/Player.cpp
+@@ -1164,7 +1164,10 @@ void Player::Update(uint32 p_time)
+ 
+                     // do attack
+                     AttackerStateUpdate(victim, BASE_ATTACK);
+-                    resetAttackTimer(BASE_ATTACK);
++                    if (sWorld->getBoolConfig(CONFIG_HURT_IN_REAL_TIME))
++                        AttackStop();
++                    else
++                        resetAttackTimer(BASE_ATTACK);
+                 }
+             }
+ 
+@@ -22594,10 +22597,13 @@ void Player::SendInitialPacketsBeforeAddToMap()
+ 
+     SendEquipmentSetList();
+ 
++    float speedrate = sWorld->getFloatConfig(CONFIG_SPEED_GAME);
++    uint32 speedtime = ((GameTime::GetGameTime() - GameTime::GetUptime()) + (GameTime::GetUptime() * speedrate));
++
+     data.Initialize(SMSG_LOGIN_SETTIMESPEED, 4 + 4 + 4);
+-    data.AppendPackedTime(GameTime::GetGameTime());
+-    data << float(0.01666667f);                             // game speed
+-    data << uint32(0);                                      // added in 3.1.2
++    data.AppendPackedTime(speedtime);
++    data << float(0.01666667f) * speedrate; // game speed
++    data << uint32(0); // added in 3.1.2
+     SendDirectMessage(&data);
+ 
+     GetReputationMgr().SendForceReactions();                // SMSG_SET_FORCED_REACTIONS
+diff --git a/src/server/game/Entities/Unit/Unit.cpp b/src/server/game/Entities/Unit/Unit.cpp
+index 45a9d4b35d..bcf185f44c 100644
+--- a/src/server/game/Entities/Unit/Unit.cpp
++++ b/src/server/game/Entities/Unit/Unit.cpp
+@@ -520,7 +520,14 @@ void Unit::DisableSpline()
+ 
+ void Unit::resetAttackTimer(WeaponAttackType type)
+ {
+-    m_attackTimer[type] = uint32(GetAttackTime(type) * m_modAttackSpeedPct[type]);
++    if (GetTypeId() == TYPEID_PLAYER || (ToCreature()->GetOwner() && ToCreature()->GetOwner()->GetTypeId() == TYPEID_PLAYER))
++    {
++        m_attackTimer[type] = uint32(GetAttackTime(type) * m_modAttackSpeedPct[type] / sWorld->getFloatConfig(CONFIG_ATTACKSPEED_PLAYER));
++    }
++    else
++    {
++        m_attackTimer[type] = uint32(GetAttackTime(type) * m_modAttackSpeedPct[type] / sWorld->getFloatConfig(CONFIG_ATTACKSPEED_ALL));
++    }
+ }
+ 
+ bool Unit::IsWithinCombatRange(Unit const* obj, float dist2compare) const
+diff --git a/src/server/game/Spells/SpellEffects.cpp b/src/server/game/Spells/SpellEffects.cpp
+index fdb3084d24..0420576dcf 100644
+--- a/src/server/game/Spells/SpellEffects.cpp
++++ b/src/server/game/Spells/SpellEffects.cpp
+@@ -5081,6 +5081,9 @@ void Spell::EffectTransmitted(SpellEffIndex effIndex)
+                 case 3: lastSec = 17; break;
+             }
+ 
++            if (sWorld->getBoolConfig(CONFIG_FAST_FISHING))
++                lastSec = 17;
++
+             duration = duration - lastSec*IN_MILLISECONDS + FISHING_BOBBER_READY_TIME*IN_MILLISECONDS;
+             break;
+         }
+diff --git a/src/server/game/Spells/SpellInfo.cpp b/src/server/game/Spells/SpellInfo.cpp
+index 6750341446..1eacd12baf 100644
+--- a/src/server/game/Spells/SpellInfo.cpp
++++ b/src/server/game/Spells/SpellInfo.cpp
+@@ -30,6 +30,7 @@
+ #include "SpellAuraEffects.h"
+ #include "SpellMgr.h"
+ #include "Vehicle.h"
++#include "World.h"
+ 
+ uint32 GetTargetFlagMask(SpellTargetObjectTypes objType)
+ {
+@@ -3098,7 +3099,10 @@ uint32 SpellInfo::CalcCastTime(Spell* spell /*= nullptr*/) const
+     if (HasAttribute(SPELL_ATTR0_REQ_AMMO) && (!IsAutoRepeatRangedSpell()))
+         castTime += 500;
+ 
+-    return (castTime > 0) ? uint32(castTime) : 0;
++    if (!sWorld->getBoolConfig(CONFIG_NO_CAST_TIME))
++        return (castTime > 0) ? uint32(castTime) : 0;
++    else
++        return 0;
+ }
+ 
+ uint32 SpellInfo::GetMaxTicks() const
+diff --git a/src/server/game/World/World.cpp b/src/server/game/World/World.cpp
+index 82dbe507d3..2cf6059ece 100644
+--- a/src/server/game/World/World.cpp
++++ b/src/server/game/World/World.cpp
+@@ -1527,7 +1527,13 @@ void World::LoadConfigSettings(bool reload)
+     // Prepatch by LordPsyan
+     // 41
+     // 42
+-    // 43
++    m_float_configs[CONFIG_SPEED_GAME] = sConfigMgr->GetFloatDefault("Custom.SpeedGame", 1.0f);
++    m_bool_configs[CONFIG_NO_CAST_TIME] = sConfigMgr->GetBoolDefault("Custom.NoCastTime", false);
++    m_bool_configs[CONFIG_HURT_IN_REAL_TIME] = sConfigMgr->GetBoolDefault("Custom.HurtInRealTime", false);
++    m_bool_configs[CONFIG_FAST_FISHING] = sConfigMgr->GetBoolDefault("Custom.FastFishing", false);
++    m_float_configs[CONFIG_ATTACKSPEED_PLAYER] = sConfigMgr->GetFloatDefault("Custom.AttackSpeedForPlayer", 1.0f);
++    m_float_configs[CONFIG_ATTACKSPEED_ALL] = sConfigMgr->GetFloatDefault("Custom.AttackSpeedForMobs", 1.0f);
++    m_float_configs[CONFIG_RESPAWNSPEED] = sConfigMgr->GetFloatDefault("Custom.RespawnSpeed", 1.0f);
+     // 44
+     // 45
+     // 46
+diff --git a/src/server/game/World/World.h b/src/server/game/World/World.h
+index c0cb58fc77..501e79b965 100644
+--- a/src/server/game/World/World.h
++++ b/src/server/game/World/World.h
+@@ -165,7 +165,9 @@ enum WorldBoolConfigs
+     // Prepatch by LordPsyan
+     // 01
+     // 02
+-    // 03
++    CONFIG_NO_CAST_TIME,
++    CONFIG_HURT_IN_REAL_TIME,
++    CONFIG_FAST_FISHING,
+     // 04
+     // 05
+     // 06
+@@ -251,15 +253,16 @@ enum WorldFloatConfigs
+     // Prepatch by LordPsyan
+     // 41
+     // 42
+-    // 43
++    CONFIG_SPEED_GAME,
+     // 44
+     // 45
+     // 46
+-    // 47
++    CONFIG_ATTACKSPEED_PLAYER,
++    CONFIG_ATTACKSPEED_ALL,
+     // 48
+     // 49
+     // 50
+-    // 51
++    CONFIG_RESPAWNSPEED,
+     // 52
+     // 53
+     // 54
+diff --git a/src/server/worldserver/worldserver.conf.dist b/src/server/worldserver/worldserver.conf.dist
+index 6ee9e3158c..06255af5d1 100644
+--- a/src/server/worldserver/worldserver.conf.dist
++++ b/src/server/worldserver/worldserver.conf.dist
+@@ -4016,6 +4016,80 @@ Metric.OverallStatusInterval = 1
+ #
+ ###################################################################################################
+ 
++###################################################################################################
++#
++# Custom.SpeedGame
++# Set it to a number upper than 1 to speed up realm timer
++# Default : 1 (Real Time)
++# Example : 60 to force 1scde (real time) = 1 minute (realm timer)
++#
++
++Custom.SpeedGame = 1
++
++#
++# Custom.NoCastTime
++# Set it to 1 to disable cast time
++# Default : 0 (Cast Time Enable)
++#
++
++Custom.NoCastTime = 0
++
++#
++# Custom.HurtInRealTime
++# Set it to 1 to disable autohurt with weapon
++# Default : 0 (Autohurt Enable)
++#
++
++Custom.HurtInRealTime = 0
++
++#
++###################################################################################################
++
++###################################################################################################
++#
++# Custom.FastFishing
++# Set it to 1 to make fishing a lot faster!
++# Default : 0 (Fishing is normal)
++#
++
++Custom.FastFishing = 0
++
++#
++###################################################################################################
++
++###################################################################################################
++#
++# Custom.RespawnSpeed
++# Set it to a number upper than 1 to speed up the respawn of mobs (and lower than 1 to slow down).
++# Default : 1.0 (Normal speed)
++#
++
++Custom.RespawnSpeed = 1.0
++
++#
++###################################################################################################
++
++#
++# Custom.AttackSpeedForPlayer
++# Set it to a number upper than 1 to speed up the attack of the player
++# Default : 1.0 (Normal speed)
++# Example : 2.0 (Player attack speed is 200% faster)
++#
++
++Custom.AttackSpeedForPlayer = 1.0
++
++#
++# Custom.AttackSpeedForMobs
++# Set it to a number upper than 1 to speed up the attack of the mobs
++# Default : 1.0 (Normal speed)
++# Example : 0.5 (Mobs attack speed is 50% slower)
++#
++
++Custom.AttackSpeedForMobs = 1.0
++
++#
++###################################################################################################
++
+ #
+ # Prepatch by LordPsyan.
+ # See http://www.realmsofwarcraft.com/bb for forums and information.
+-- 
+2.11.0
+

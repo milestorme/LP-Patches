@@ -1,0 +1,411 @@
+From 68713972a7c5f3d349c3d871490def08d3c0db54 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Sat, 29 Sep 2018 12:30:34 -0500
+Subject: [PATCH] 2018_09_27-Congrats_On_Level
+
+---
+ HowTo-Congrats-On-Level.txt                        |  38 +++
+ .../world/world.congrats_on_level.sql              |  28 ++
+ src/server/scripts/Custom/Congrats_on_Level.cpp    | 283 +++++++++++++++++++++
+ src/server/scripts/Custom/custom_script_loader.cpp |   6 +-
+ 4 files changed, 353 insertions(+), 2 deletions(-)
+ create mode 100644 HowTo-Congrats-On-Level.txt
+ create mode 100644 sql/LordPsyan-Patches/world/world.congrats_on_level.sql
+ create mode 100644 src/server/scripts/Custom/Congrats_on_Level.cpp
+
+diff --git a/HowTo-Congrats-On-Level.txt b/HowTo-Congrats-On-Level.txt
+new file mode 100644
+index 0000000000..4613d18979
+--- /dev/null
++++ b/HowTo-Congrats-On-Level.txt
+@@ -0,0 +1,38 @@
++This small script allows for a reward to automatically go into the inventory of any player that makes it to a specific level.
++
++Make sure to modify this script before using. You must hard code in the money amounts, and item entry numbers, plus spell numbers.
++
++An example:
++
++This is the part of the cpp file you must edit. I will explain each part.
++
++            case 10:
++        money = 100;
++        item = ITEMID;
++        item2 = ITEMID2;
++        spell = SPELLID;
++        break;
++
++Here is the breakdown:
++
++            case 10: (10 = Level 10)
++        money = 100; (100 = 100 gold)
++        item = ITEMID; (Change ITEMID to the entry number of the item you want offered at this level)
++        item2 = ITEMID2; (Change ITEMID2 to the entry number of second item)
++        spell = SPELLID; (Change SPELLID to the spell id number)
++        break;
++
++So if you wanted to offer 100 gold, a pet cat (pet carrier, black tabby) and a pet cockroach, plus buff the player with Power Word: Fortitude, it would look like this:
++
++
++            case 10:
++        money = 100;
++        item = 8491;
++        item2 = 10393;
++        spell = 48161;
++        break;
++
++You must do this for each level you want to have give rewards. At this time, since items are automatically added, the player loses the reward(s) if
++their bags are full.
++
++DB Table version coming soon.
+\ No newline at end of file
+diff --git a/sql/LordPsyan-Patches/world/world.congrats_on_level.sql b/sql/LordPsyan-Patches/world/world.congrats_on_level.sql
+new file mode 100644
+index 0000000000..e15e746344
+--- /dev/null
++++ b/sql/LordPsyan-Patches/world/world.congrats_on_level.sql
+@@ -0,0 +1,28 @@
++/*Table structure for table `congrats_on_level` */
++
++DROP TABLE IF EXISTS `congrats_on_level`;
++
++CREATE TABLE `congrats_on_level` (
++  `level` tinyint(3) NOT NULL DEFAULT '0',
++  `money` int(10) NOT NULL DEFAULT '0',
++  `item1` int(10) NOT NULL DEFAULT '0',
++  `item2` int(10) NOT NULL DEFAULT '0',
++  `spell` int(10) NOT NULL DEFAULT '0',
++  PRIMARY KEY (`level`)
++) ENGINE=InnoDB DEFAULT CHARSET=latin1;
++
++/*Data for the table `congrats_on_level` */
++
++LOCK TABLES `congrats_on_level` WRITE;
++
++INSERT INTO `congrats_on_level` (`level`,`money`,`item1`,`item2`,`spell`) values
++(10,100,8491,10393,48161),
++(20,100,8491,10393,48161),
++(30,100,8491,10393,48161),
++(40,100,8491,10393,48161),
++(50,100,8491,10393,48161),
++(60,100,8491,10393,48161),
++(70,100,8491,10393,48161),
++(80,100,8491,10393,48161);
++
++UNLOCK TABLES;
+diff --git a/src/server/scripts/Custom/Congrats_on_Level.cpp b/src/server/scripts/Custom/Congrats_on_Level.cpp
+new file mode 100644
+index 0000000000..240e5a28ac
+--- /dev/null
++++ b/src/server/scripts/Custom/Congrats_on_Level.cpp
+@@ -0,0 +1,283 @@
++/*
++Idea and base script by Vextah.
++Help and fixes on original script by: Core surgeon & (cant remember other who initially helped but kudos)
++Modified by LordPsyan
++*/
++
++#include "ScriptMgr.h"
++#include "LordPsyan.h"
++
++class custom_CongratsOnLevel : public PlayerScript
++{
++public:
++    custom_CongratsOnLevel() : PlayerScript("custom_CongratsOnLevel") { }
++
++    void OnLevelChanged(Player* player, uint8 newLevel)
++    {
++        uint32 money, item, item2, spell;
++
++        switch(++newLevel)
++        {
++            case 10:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 10");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 20:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 20");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 30:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 30");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 40:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 40");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 50:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 50");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 60:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 60");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 70:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 70");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            case 80:
++            {
++            QueryResult result;
++            result = WorldDatabase.PQuery("SELECT * FROM `congrats_on_level` WHERE `level` = 80");
++            if (!result)
++            {
++               return;
++            } else {
++               uint32 money = 0;
++               uint32 item1 = 0;
++               uint32 item2 = 0;
++               uint32 spell = 0;
++            do
++            {
++               Field *fields = result->Fetch();
++               money = fields[1].GetInt32();
++               item1 = fields[2].GetInt32();
++               item2 = fields[3].GetInt32();
++               spell = fields[4].GetInt32();
++
++               player->ModifyMoney(money * 10000);
++               player->AddItem(item1, 1);
++               player->AddItem(item2, 1);
++               player->CastSpell(player, spell);
++            }
++            while (result->NextRow());
++               return;
++            }
++            }
++            break;
++            default:
++        return;
++        }
++
++        std::ostringstream ss;
++        ss << "|cffFF0000[Faction Gaming]|r Congrats to " << player->GetName() << " on reaching level " << (uint32)newLevel;
++        sWorld->SendServerMessage(SERVER_MSG_STRING, ss.str().c_str());
++
++        std::ostringstream ss2;
++        ss2 << "For your hard work and dedication you have been awarded " << money << " gold, special items, and a powerful buff!";
++        player->GetSession()->SendNotification(ss2.str().c_str());
++
++        player->ModifyMoney(money*GOLD);
++        player->AddItem(item, 1);
++        player->AddItem(item2, 1);
++        player->CastSpell(player, spell, false);
++    }
++};
++
++void AddSC_custom_CongratsOnLevel()
++{
++    new custom_CongratsOnLevel();
++}
+\ No newline at end of file
+diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
+index 5412cf1942..9626d5cf9f 100644
+--- a/src/server/scripts/Custom/custom_script_loader.cpp
++++ b/src/server/scripts/Custom/custom_script_loader.cpp
+@@ -205,7 +205,8 @@
+ // start187
+ // start188
+ // start189
+-// start190
++// Congrats on Level
++void AddSC_custom_CongratsOnLevel();
+ // start191
+ // start192
+ // start193
+@@ -410,7 +411,8 @@ void AddCustomScripts()
+ // end187
+ // end188
+ // end189
+-// end190
++    // Congrats on Level
++    AddSC_custom_CongratsOnLevel();
+ // end191
+ // end192
+ // end193
+-- 
+2.11.0
+

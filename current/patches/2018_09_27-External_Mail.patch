@@ -1,0 +1,256 @@
+From 745b3ef1898c0ba8c2ed16fbc548f078a4e8e187 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Sat, 29 Sep 2018 16:57:39 -0500
+Subject: [PATCH] 2018_09_27-External_Mail
+
+---
+ .../characters/characters.external_mail.sql        | 10 ++++
+ .../Database/Implementation/CharacterDatabase.cpp  |  3 ++
+ .../Database/Implementation/CharacterDatabase.h    |  2 +
+ src/server/game/Mails/Mail.cpp                     | 62 ++++++++++++++++++++++
+ src/server/game/Server/WorldSession.h              |  1 +
+ src/server/game/World/World.cpp                    | 19 ++++++-
+ src/server/game/World/World.h                      |  4 +-
+ src/server/worldserver/worldserver.conf.dist       | 18 +++++++
+ 8 files changed, 117 insertions(+), 2 deletions(-)
+ create mode 100644 sql/LordPsyan-Patches/characters/characters.external_mail.sql
+
+diff --git a/sql/LordPsyan-Patches/characters/characters.external_mail.sql b/sql/LordPsyan-Patches/characters/characters.external_mail.sql
+new file mode 100644
+index 0000000000..8cd6a05803
+--- /dev/null
++++ b/sql/LordPsyan-Patches/characters/characters.external_mail.sql
+@@ -0,0 +1,10 @@
++CREATE TABLE `mail_external` (
++  `id` bigint(20) unsigned NOT NULL auto_increment,
++  `receiver` bigint(20) unsigned NOT NULL,
++  `subject` varchar(200) default 'Support Message',
++  `message` varchar(500) default 'Support Message',
++  `money` bigint(20) unsigned NOT NULL default '0',
++  `item` bigint(20) unsigned NOT NULL default '0',
++  `item_count` bigint(20) unsigned NOT NULL default '0',
++  PRIMARY KEY  (`id`)
++) ENGINE=MyISAM AUTO_INCREMENT=7525 DEFAULT CHARSET=utf8;
+\ No newline at end of file
+diff --git a/src/server/database/Database/Implementation/CharacterDatabase.cpp b/src/server/database/Database/Implementation/CharacterDatabase.cpp
+index 4582d88822..2cf6d3596d 100644
+--- a/src/server/database/Database/Implementation/CharacterDatabase.cpp
++++ b/src/server/database/Database/Implementation/CharacterDatabase.cpp
+@@ -142,6 +142,9 @@ void CharacterDatabaseConnection::DoPrepareStatements()
+     PrepareStatement(CHAR_UPD_MAIL_RETURNED, "UPDATE mail SET sender = ?, receiver = ?, expire_time = ?, deliver_time = ?, cod = 0, checked = ? WHERE id = ?", CONNECTION_ASYNC);
+     PrepareStatement(CHAR_UPD_MAIL_ITEM_RECEIVER, "UPDATE mail_items SET receiver = ? WHERE item_guid = ?", CONNECTION_ASYNC);
+     PrepareStatement(CHAR_UPD_ITEM_OWNER, "UPDATE item_instance SET owner_guid = ? WHERE guid = ?", CONNECTION_ASYNC);
++    PrepareStatement(CHAR_GET_EXTERNAL_MAIL, "SELECT id, receiver, subject, message, money, item, item_count FROM mail_external ORDER BY id ASC", CONNECTION_SYNCH);
++    PrepareStatement(CHAR_DEL_EXTERNAL_MAIL, "DELETE FROM mail_external WHERE id = ?", CONNECTION_ASYNC);
++
+ 
+     PrepareStatement(CHAR_SEL_ITEM_REFUNDS, "SELECT player_guid, paidMoney, paidExtendedCost FROM item_refund_instance WHERE item_guid = ? AND player_guid = ? LIMIT 1", CONNECTION_SYNCH);
+     PrepareStatement(CHAR_SEL_ITEM_BOP_TRADE, "SELECT allowedPlayers FROM item_soulbound_trade_data WHERE itemGuid = ? LIMIT 1", CONNECTION_SYNCH);
+diff --git a/src/server/database/Database/Implementation/CharacterDatabase.h b/src/server/database/Database/Implementation/CharacterDatabase.h
+index 359f945d1b..160d6061d4 100644
+--- a/src/server/database/Database/Implementation/CharacterDatabase.h
++++ b/src/server/database/Database/Implementation/CharacterDatabase.h
+@@ -127,6 +127,8 @@ enum CharacterDatabaseStatements : uint32
+     CHAR_UPD_MAIL_RETURNED,
+     CHAR_UPD_MAIL_ITEM_RECEIVER,
+     CHAR_UPD_ITEM_OWNER,
++    CHAR_GET_EXTERNAL_MAIL,
++    CHAR_DEL_EXTERNAL_MAIL,
+     CHAR_SEL_ITEM_REFUNDS,
+     CHAR_SEL_ITEM_BOP_TRADE,
+     CHAR_DEL_ITEM_BOP_TRADE,
+diff --git a/src/server/game/Mails/Mail.cpp b/src/server/game/Mails/Mail.cpp
+index e4cf914f98..8cbac4cb71 100644
+--- a/src/server/game/Mails/Mail.cpp
++++ b/src/server/game/Mails/Mail.cpp
+@@ -30,6 +30,7 @@
+ #include "ObjectMgr.h"
+ #include "Player.h"
+ #include "World.h"
++#include "WorldSession.h"
+ 
+ MailSender::MailSender(Object* sender, MailStationery stationery) : m_stationery(stationery)
+ {
+@@ -292,3 +293,64 @@ void MailDraft::SendMailTo(SQLTransaction& trans, MailReceiver const& receiver,
+         deleteIncludedItems(temp);
+     }
+ }
++
++void WorldSession::SendExternalMails()
++{
++    TC_LOG_DEBUG("entities.player.character", "External Mail> Sending mails in queue...");
++
++    PreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_GET_EXTERNAL_MAIL);
++    PreparedQueryResult result = CharacterDatabase.Query(stmt);
++    if (!result)
++    {
++        TC_LOG_DEBUG("entities.player.character", "External Mail> No mails in queue...");
++        return;
++    }
++
++    SQLTransaction trans = CharacterDatabase.BeginTransaction();
++
++    MailDraft* mail = NULL;
++
++    do
++    {
++        Field *fields = result->Fetch();
++        uint32 id = fields[0].GetUInt32();
++        uint32 receiver_guid = fields[1].GetUInt32();
++        std::string subject = fields[2].GetString();
++        std::string body = fields[3].GetString();
++        uint32 money = fields[4].GetUInt32();
++        uint32 itemId = fields[5].GetUInt32();
++        uint32 itemCount = fields[6].GetUInt32();
++
++        Player *receiver = ObjectAccessor::FindPlayer(ObjectGuid(HighGuid::Player, 0, (receiver_guid)));
++
++        mail = new MailDraft(subject, body);
++
++        if (money)
++        {
++            TC_LOG_DEBUG("entities.player.character", "External Mail> Adding money");
++            mail->AddMoney(money);
++        }
++
++        if (itemId)
++        {
++             TC_LOG_DEBUG("entities.player.character", "External Mail> Adding %u of item with id %u", itemCount, itemId);
++             if(Item* mailItem = Item::CreateItem(itemId, itemCount))
++             {
++                 mailItem->SaveToDB(trans);
++                 mail->AddItem(mailItem);
++             }
++        }
++
++        mail->SendMailTo(trans, receiver ? receiver : MailReceiver(receiver_guid), MailSender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM), MAIL_CHECK_MASK_RETURNED);
++        delete mail;
++
++        stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_EXTERNAL_MAIL);
++        stmt->setUInt32(0, id);
++        trans->Append(stmt);
++
++        TC_LOG_DEBUG("entities.player.character", "External Mail> Mail sent");
++   } while (result->NextRow());
++
++   CharacterDatabase.CommitTransaction(trans);
++   TC_LOG_DEBUG("entities.player.character", "External Mail> All Mails Sent...");
++}
+\ No newline at end of file
+diff --git a/src/server/game/Server/WorldSession.h b/src/server/game/Server/WorldSession.h
+index 540bc23912..49aed8d655 100644
+--- a/src/server/game/Server/WorldSession.h
++++ b/src/server/game/Server/WorldSession.h
+@@ -397,6 +397,7 @@ class TC_GAME_API WorldSession
+             }
+         }
+         //used with item_page table
++        static void SendExternalMails();
+         bool SendItemInfo(uint32 itemid, WorldPacket data);
+         //auction
+         void SendAuctionHello(ObjectGuid guid, Creature* unit);
+diff --git a/src/server/game/World/World.cpp b/src/server/game/World/World.cpp
+index 82dbe507d3..2c00439249 100644
+--- a/src/server/game/World/World.cpp
++++ b/src/server/game/World/World.cpp
+@@ -1466,6 +1466,10 @@ void World::LoadConfigSettings(bool reload)
+     // MySQL ping time interval
+     m_int_configs[CONFIG_DB_PING_INTERVAL] = sConfigMgr->GetIntDefault("MaxPingTime", 30);
+ 
++     // External Mail
++    m_bool_configs[CONFIG_EXTERNAL_MAIL_ENABLE] = sConfigMgr->GetBoolDefault("External.Mail.Enable", false);
++    m_int_configs[CONFIG_EXTERNAL_MAIL_INTERVAL] = sConfigMgr->GetIntDefault("External.Mail.Interval", 1);
++
+     // misc
+     m_bool_configs[CONFIG_PDUMP_NO_PATHS] = sConfigMgr->GetBoolDefault("PlayerDump.DisallowPaths", true);
+     m_bool_configs[CONFIG_PDUMP_NO_OVERWRITE] = sConfigMgr->GetBoolDefault("PlayerDump.DisallowOverwrite", true);
+@@ -2127,7 +2131,9 @@ void World::SetInitialWorldSettings()
+     localtime_r(&gameTime, &localTm);
+     uint8 CleanOldMailsTime = getIntConfig(CONFIG_CLEAN_OLD_MAIL_TIME);
+     mail_timer = ((((localTm.tm_hour + (24 - CleanOldMailsTime)) % 24)* HOUR * IN_MILLISECONDS) / m_timers[WUPDATE_AUCTIONS].GetInterval());
+-                                                            //1440
++
++    extmail_timer.SetInterval(m_int_configs[CONFIG_EXTERNAL_MAIL_INTERVAL] * MINUTE * IN_MILLISECONDS);
++
+     mail_timer_expires = ((DAY * IN_MILLISECONDS) / (m_timers[WUPDATE_AUCTIONS].GetInterval()));
+     TC_LOG_INFO("server.loading", "Mail timer set to: " UI64FMTD ", mail return is called every " UI64FMTD " minutes", uint64(mail_timer), uint64(mail_timer_expires));
+ 
+@@ -2346,6 +2352,17 @@ void World::Update(uint32 diff)
+     if (currentGameTime > m_NextGuildReset)
+         ResetGuildCap();
+ 
++     // Handle external mail
++    if (sWorld->getBoolConfig(CONFIG_EXTERNAL_MAIL_ENABLE))
++    {
++        extmail_timer.Update(diff);
++        if (extmail_timer.Passed())
++        {
++            WorldSession::SendExternalMails();
++            extmail_timer.Reset();
++        }
++    }
++
+     /// <ul><li> Handle auctions when the timer has passed
+     if (m_timers[WUPDATE_AUCTIONS].Passed())
+     {
+diff --git a/src/server/game/World/World.h b/src/server/game/World/World.h
+index c0cb58fc77..f5dd7e64e0 100644
+--- a/src/server/game/World/World.h
++++ b/src/server/game/World/World.h
+@@ -197,7 +197,7 @@ enum WorldBoolConfigs
+     // 32
+     // 33
+     // 34
+-    // 35
++    CONFIG_EXTERNAL_MAIL_ENABLE,
+     // 36
+     // 37
+     // 38
+@@ -461,6 +461,7 @@ enum WorldIntConfigs
+     CONFIG_CREATURE_PICKPOCKET_REFILL,
+     CONFIG_CREATURE_STOP_FOR_PLAYER,
+     CONFIG_AHBOT_UPDATE_INTERVAL,
++    CONFIG_EXTERNAL_MAIL_INTERVAL,
+     CONFIG_CHARTER_COST_GUILD,
+     CONFIG_CHARTER_COST_ARENA_2v2,
+     CONFIG_CHARTER_COST_ARENA_3v3,
+@@ -933,6 +934,7 @@ class TC_GAME_API World
+         bool m_isClosed;
+ 
+         IntervalTimer m_timers[WUPDATE_COUNT];
++        IntervalTimer extmail_timer;
+         time_t mail_timer;
+         time_t mail_timer_expires;
+ 
+diff --git a/src/server/worldserver/worldserver.conf.dist b/src/server/worldserver/worldserver.conf.dist
+index 6ee9e3158c..1fc14f927b 100644
+--- a/src/server/worldserver/worldserver.conf.dist
++++ b/src/server/worldserver/worldserver.conf.dist
+@@ -4016,6 +4016,24 @@ Metric.OverallStatusInterval = 1
+ #
+ ###################################################################################################
+ 
++###################################################################################################
++#
++#    External.Mail.Enable
++#        Enable external mail delivery from mail_external table.
++#        Default: 0 (disabled)
++#                 1 (enabled)
++#
++#    External.Mail.Interval
++#        Mail delivery delay time for item sending from mail_external table, in minutes.
++#        Default: 5 minutes
++#
++
++External.Mail.Enable = 1
++External.Mail.Interval = 5
++
++#
++###################################################################################################
++
+ #
+ # Prepatch by LordPsyan.
+ # See http://www.realmsofwarcraft.com/bb for forums and information.
+-- 
+2.11.0
+

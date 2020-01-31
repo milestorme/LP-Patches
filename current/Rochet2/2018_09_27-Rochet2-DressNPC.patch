@@ -1,0 +1,1266 @@
+From 96a1805dbc5f869508fa2025a0f84634ab424b44 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Fri, 28 Sep 2018 08:43:48 -0500
+Subject: [PATCH] 2018_09_27-Rochet2-DressNPC
+
+---
+ cmake/options.cmake                                |   1 +
+ cmake/showoptions.cmake                            |   6 +
+ .../Example.DressNPCs/Example.sql                  |   5 +
+ sql/LordPsyan-Patches/Example.DressNPCs/README.md  |  55 ++++++++
+ src/server/game/AI/SmartScripts/SmartScript.cpp    |  22 ++-
+ src/server/game/DataStores/DBCStores.cpp           |   3 +
+ src/server/game/DataStores/DBCStores.h             |   1 +
+ src/server/game/Entities/Creature/Creature.cpp     | 119 ++++++++++++----
+ src/server/game/Entities/Creature/Creature.h       |  14 ++
+ src/server/game/Entities/Creature/CreatureData.h   |  12 +-
+ src/server/game/Globals/ObjectMgr.cpp              | 152 ++++++++++++++++++---
+ src/server/game/Globals/ObjectMgr.h                |  30 +++-
+ src/server/game/Handlers/AuctionHouseHandler.cpp   |   6 +
+ src/server/game/Handlers/GuildHandler.cpp          |   7 +
+ src/server/game/Handlers/ItemHandler.cpp           |   6 +
+ src/server/game/Handlers/MiscHandler.cpp           |   5 +
+ src/server/game/Handlers/NPCHandler.cpp            |  25 ++++
+ src/server/game/Handlers/PetitionsHandler.cpp      |   6 +
+ src/server/game/Handlers/QuestHandler.cpp          |   6 +
+ src/server/game/Handlers/SpellHandler.cpp          |  33 +++++
+ src/server/game/Handlers/TaxiHandler.cpp           |   6 +
+ src/server/game/Server/WorldSession.cpp            |   1 +
+ src/server/game/Spells/Auras/SpellAuraEffects.cpp  |   8 +-
+ src/server/game/World/World.cpp                    |   3 +
+ src/server/scripts/Commands/cs_modify.cpp          |   3 +
+ src/server/scripts/Commands/cs_npc.cpp             |   2 +
+ src/server/scripts/Commands/cs_reload.cpp          |  19 +++
+ src/server/shared/DataStores/DBCStructure.h        |   9 ++
+ src/server/shared/DataStores/DBCfmt.h              |   1 +
+ 29 files changed, 502 insertions(+), 64 deletions(-)
+ create mode 100644 sql/LordPsyan-Patches/Example.DressNPCs/Example.sql
+ create mode 100644 sql/LordPsyan-Patches/Example.DressNPCs/README.md
+
+diff --git a/cmake/options.cmake b/cmake/options.cmake
+index 4f99875d98..b3eca47c56 100644
+--- a/cmake/options.cmake
++++ b/cmake/options.cmake
+@@ -52,3 +52,4 @@ option(WITH_STRICT_DATABASE_TYPE_CHECKS "Enable strict checking of database fiel
+ set(WITH_SOURCE_TREE    "hierarchical" CACHE STRING "Build the source tree for IDE's.")
+ set_property(CACHE WITH_SOURCE_TREE PROPERTY STRINGS no flat hierarchical hierarchical-folders)
+ option(WITHOUT_GIT      "Disable the GIT testing routines"                            0)
++option(DISABLE_DRESSNPCS_CORESOUNDS "Disable server side 'missing sounds' workaround" 0)
+diff --git a/cmake/showoptions.cmake b/cmake/showoptions.cmake
+index 6094198e76..6ab1287552 100644
+--- a/cmake/showoptions.cmake
++++ b/cmake/showoptions.cmake
+@@ -135,4 +135,10 @@ if (BUILD_SHARED_LIBS)
+   WarnAboutSpacesInBuildPath()
+ endif()
+ 
++if (DISABLE_DRESSNPCS_CORESOUNDS)
++  message("")
++  message("DressNPCs sound workaround disabled. Live without sounds or use a client side patch.")
++  add_definitions(-DDISABLE_DRESSNPCS_CORESOUNDS)
++endif()
++
+ message("")
+diff --git a/sql/LordPsyan-Patches/Example.DressNPCs/Example.sql b/sql/LordPsyan-Patches/Example.DressNPCs/Example.sql
+new file mode 100644
+index 0000000000..ac739a6239
+--- /dev/null
++++ b/sql/LordPsyan-Patches/Example.DressNPCs/Example.sql
+@@ -0,0 +1,5 @@
++SET @NPCENTRY := 6;
++
++INSERT INTO `creature_template_outfits` (`entry`, `race`, `gender`, `skin`, `face`, `hair`, `haircolor`, `facialhair`, `head`, `shoulders`, `body`, `chest`, `waist`, `legs`, `feet`, `wrists`, `hands`, `back`, `tabard`)
++VALUES (123, 11, 1, 14, 4, 10, 3, 5, -31286, -43617, 0, -26267, -26270, -26272, 0, 0, -43698, 0, 0);
++UPDATE `creature_template` SET `modelid2` = -123 WHERE `entry` = @NPCENTRY;
+diff --git a/sql/LordPsyan-Patches/Example.DressNPCs/README.md b/sql/LordPsyan-Patches/Example.DressNPCs/README.md
+new file mode 100644
+index 0000000000..2f34dd104f
+--- /dev/null
++++ b/sql/LordPsyan-Patches/Example.DressNPCs/README.md
+@@ -0,0 +1,55 @@
++# DressNPCs [![Build Status](https://travis-ci.org/Rochet2/TrinityCore.svg?branch=dressnpcs)](https://travis-ci.org/Rochet2/TrinityCore)
++
++#### About
++This patch allows you to dress up armor on NPCs as well as choose their facial features.
++Create unique looking NPCs by defining their gender, race, facial features, clothing and much more.
++All this is done in the database. No client edits required.
++
++Source: http://rochet2.github.io/Dress-NPCs.html
++
++Known bugs:
++- Portraits of the NPCs may not work properly at times - a client side visual bug (blizzard's fault).
++- Normally NPCs have no sound replies when you talk to them. This is a client side limitation and can be fixed with a client patch. Additionally a **workaround has been included** which sends interaction sounds from the core unless disabled in CMake.
++
++#### Installation
++
++Available as:
++- Direct merge: https://github.com/Rochet2/TrinityCore/tree/dressnpcs
++- Diff: https://github.com/Rochet2/TrinityCore/compare/TrinityCore:3.3.5...dressnpcs.diff
++- Diff in github view: https://github.com/Rochet2/TrinityCore/compare/TrinityCore:3.3.5...dressnpcs
++
++Using direct merge:
++- open git bash to source location
++- do `git remote add rochet2 https://github.com/Rochet2/TrinityCore.git`
++- do `git pull rochet2 dressnpcs`
++- use cmake and compile
++
++Using diff:
++- DO NOT COPY THE DIFF DIRECTLY! It causes apply to fail.
++- download the diff by __right clicking__ the link and select __Save link as__
++- place the downloaded `dressnpcs.diff` to the source root folder
++- open git bash to source location
++- do `git apply dressnpcs.diff`
++- use cmake and compile
++
++After compiling:
++- TrinityCore auto updater should run needed SQLs automatically.
++- If you do not use the auto updater then run files named `*_dressnpcs.sql` from `\sql\custom` to your databases.
++
++#### Usage
++Before compiling the core you can choose in CMake to disable sound workaround if you have a client patch for the NPC sounds.
++
++To make an outfit create a row to `creature_template_outfits` table with your desired race, class, gender and equipped items. You can freely choose the entry number.
++- The items can use positive value as item entry and negative for displayid.
++- Appearances are usually between 0 and 10 and they define the look of the item. Different appearances are usually used by mythic and heroic versions of an item. An appearance only works when using an item entry (a positive value) for the equipped item definition.
++- `guildid` refers to an actual guild from characters table and it is used to define the tabard looks of the creature if one is equipped.
++- `npcsoundsid` refers to `NPCSounds.dbc/db2`. You can define what gossip replies to use for the NPC with the core side workaround for missing sounds for gossip. To create completely new sound combinations you can use hotfixes database or edit the DBC file.
++
++Create an NPC. Set the `creature_template_outfits` entry to the modelID column in `creature_template`, but __make it negative__.
++
++Clear wow cache folder, restart server and spawn the NPC. Remember to check startup errors.
++
++The patch also adds `.reload creature_template_outfit` command. You can use it to reload the creature outfit table for testing.
++
++#### Bugs and Contact
++Report issues and similar to http://rochet2.github.io/
+diff --git a/src/server/game/AI/SmartScripts/SmartScript.cpp b/src/server/game/AI/SmartScripts/SmartScript.cpp
+index df7ea2f110..3ffce71e78 100644
+--- a/src/server/game/AI/SmartScripts/SmartScript.cpp
++++ b/src/server/game/AI/SmartScripts/SmartScript.cpp
+@@ -376,10 +376,22 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
+                     {
+                         if (CreatureTemplate const* ci = sObjectMgr->GetCreatureTemplate(e.action.morphOrMount.creature))
+                         {
+-                            uint32 displayId = ObjectMgr::ChooseDisplayId(ci);
+-                            target->ToCreature()->SetDisplayId(displayId);
+-                            TC_LOG_DEBUG("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_MORPH_TO_ENTRY_OR_MODEL: Creature entry %u, GuidLow %u set displayid to %u",
+-                                target->GetEntry(), target->GetGUID().GetCounter(), displayId);
++                            Creature* crea = target->ToCreature();
++                            ASSERT(crea);
++                            crea->SetOutfit(ObjectMgr::ChooseDisplayId(ci));
++                            if (crea->IsMirrorImage())
++                            {
++                                new MirrorImageUpdate(crea);
++                            }
++                            else
++                            {
++                                target->RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++
++                                uint32 displayId = sObjectMgr->GetCreatureDisplay(crea->GetOutfit());
++                                target->ToCreature()->SetDisplayId(displayId);
++                                TC_LOG_DEBUG("scripts.ai", "SmartScript::ProcessAction:: SMART_ACTION_MORPH_TO_ENTRY_OR_MODEL: Creature entry %u, %s set displayid to %u",
++                                    target->GetEntry(), target->GetGUID().ToString().c_str(), displayId);
++                            }
+                         }
+                     }
+                     //if no param1, then use value from param2 (modelId)
+@@ -1109,7 +1121,7 @@ void SmartScript::ProcessAction(SmartScriptHolder& e, Unit* unit, uint32 var0, u
+                     if (e.action.morphOrMount.creature > 0)
+                     {
+                         if (CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(e.action.morphOrMount.creature))
+-                            target->ToUnit()->Mount(ObjectMgr::ChooseDisplayId(cInfo));
++                            target->ToUnit()->Mount(sObjectMgr->GetCreatureDisplay(ObjectMgr::ChooseDisplayId(cInfo)));
+                     }
+                     else
+                         target->ToUnit()->Mount(e.action.morphOrMount.model);
+diff --git a/src/server/game/DataStores/DBCStores.cpp b/src/server/game/DataStores/DBCStores.cpp
+index d2bc89c53c..df1841c46e 100644
+--- a/src/server/game/DataStores/DBCStores.cpp
++++ b/src/server/game/DataStores/DBCStores.cpp
+@@ -139,6 +139,8 @@ typedef std::array<std::vector<Trinity::wregex>, TOTAL_LOCALES> NameValidationRe
+ NameValidationRegexContainer NamesProfaneValidators;
+ NameValidationRegexContainer NamesReservedValidators;
+ 
++DBCStorage<NPCSoundsEntry> sNPCSoundsStore(NPCSoundsEntryfmt);
++
+ DBCStorage <OverrideSpellDataEntry> sOverrideSpellDataStore(OverrideSpellDatafmt);
+ 
+ DBCStorage <PowerDisplayEntry> sPowerDisplayStore(PowerDisplayfmt);
+@@ -346,6 +348,7 @@ void LoadDBCStores(const std::string& dataPath)
+     LOAD_DBC(sMovieStore,                         "Movie.dbc");
+     LOAD_DBC(sNamesProfanityStore,                "NamesProfanity.dbc");
+     LOAD_DBC(sNamesReservedStore,                 "NamesReserved.dbc");
++    LOAD_DBC(sNPCSoundsStore,                     "NPCSounds.dbc");
+     LOAD_DBC(sOverrideSpellDataStore,             "OverrideSpellData.dbc");
+     LOAD_DBC(sPowerDisplayStore,                  "PowerDisplay.dbc");
+     LOAD_DBC(sPvPDifficultyStore,                 "PvpDifficulty.dbc");
+diff --git a/src/server/game/DataStores/DBCStores.h b/src/server/game/DataStores/DBCStores.h
+index 8bcc9c5ac2..ea3437c451 100644
+--- a/src/server/game/DataStores/DBCStores.h
++++ b/src/server/game/DataStores/DBCStores.h
+@@ -157,6 +157,7 @@ TC_GAME_API extern DBCStorage <MapEntry>                     sMapStore;
+ //TC_GAME_API extern DBCStorage <MapDifficultyEntry>           sMapDifficultyStore; -- use GetMapDifficultyData insteed
+ TC_GAME_API extern MapDifficultyMap                          sMapDifficultyMap;
+ TC_GAME_API extern DBCStorage <MovieEntry>                   sMovieStore;
++TC_GAME_API extern DBCStorage <NPCSoundsEntry>               sNPCSoundsStore;
+ TC_GAME_API extern DBCStorage <OverrideSpellDataEntry>       sOverrideSpellDataStore;
+ TC_GAME_API extern DBCStorage <PowerDisplayEntry>            sPowerDisplayStore;
+ TC_GAME_API extern DBCStorage <QuestSortEntry>               sQuestSortStore;
+diff --git a/src/server/game/Entities/Creature/Creature.cpp b/src/server/game/Entities/Creature/Creature.cpp
+index 7cbb2e3d2b..469b311681 100644
+--- a/src/server/game/Entities/Creature/Creature.cpp
++++ b/src/server/game/Entities/Creature/Creature.cpp
+@@ -106,10 +106,10 @@ VendorItem const* VendorItemData::FindItemCostPair(uint32 item_id, uint32 extend
+     return nullptr;
+ }
+ 
+-uint32 CreatureTemplate::GetRandomValidModelId() const
++int32 CreatureTemplate::GetRandomValidModelId() const
+ {
+     uint8 c = 0;
+-    uint32 modelIDs[4];
++    int32 modelIDs[4];
+ 
+     if (Modelid1) modelIDs[c++] = Modelid1;
+     if (Modelid2) modelIDs[c++] = Modelid2;
+@@ -119,7 +119,7 @@ uint32 CreatureTemplate::GetRandomValidModelId() const
+     return ((c>0) ? modelIDs[urand(0, c-1)] : 0);
+ }
+ 
+-uint32 CreatureTemplate::GetFirstValidModelId() const
++int32 CreatureTemplate::GetFirstValidModelId() const
+ {
+     if (Modelid1) return Modelid1;
+     if (Modelid2) return Modelid2;
+@@ -130,42 +130,42 @@ uint32 CreatureTemplate::GetFirstValidModelId() const
+ 
+ uint32 CreatureTemplate::GetFirstInvisibleModel() const
+ {
+-    CreatureModelInfo const* modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid1);
++    CreatureModelInfo const* modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid1));
+     if (modelInfo && modelInfo->is_trigger)
+-        return Modelid1;
++        return sObjectMgr->GetCreatureDisplay(Modelid1);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid2);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid2));
+     if (modelInfo && modelInfo->is_trigger)
+-        return Modelid2;
++        return sObjectMgr->GetCreatureDisplay(Modelid2);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid3);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid3));
+     if (modelInfo && modelInfo->is_trigger)
+-        return Modelid3;
++        return sObjectMgr->GetCreatureDisplay(Modelid3);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid4);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid4));
+     if (modelInfo && modelInfo->is_trigger)
+-        return Modelid4;
++        return sObjectMgr->GetCreatureDisplay(Modelid4);
+ 
+     return 11686;
+ }
+ 
+ uint32 CreatureTemplate::GetFirstVisibleModel() const
+ {
+-    CreatureModelInfo const* modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid1);
++    CreatureModelInfo const* modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid1));
+     if (modelInfo && !modelInfo->is_trigger)
+-        return Modelid1;
++        return sObjectMgr->GetCreatureDisplay(Modelid1);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid2);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid2));
+     if (modelInfo && !modelInfo->is_trigger)
+-        return Modelid2;
++        return sObjectMgr->GetCreatureDisplay(Modelid2);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid3);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid3));
+     if (modelInfo && !modelInfo->is_trigger)
+-        return Modelid3;
++        return sObjectMgr->GetCreatureDisplay(Modelid3);
+ 
+-    modelInfo = sObjectMgr->GetCreatureModelInfo(Modelid4);
++    modelInfo = sObjectMgr->GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(Modelid4));
+     if (modelInfo && !modelInfo->is_trigger)
+-        return Modelid4;
++        return sObjectMgr->GetCreatureDisplay(Modelid4);
+ 
+     return 17519;
+ }
+@@ -198,10 +198,10 @@ WorldPacket CreatureTemplate::BuildQueryData(LocaleConstant loc) const
+     queryTemp.Stats.CreatureFamily = family;
+     queryTemp.Stats.Classification = rank;
+     memcpy(queryTemp.Stats.ProxyCreatureID, KillCredit, sizeof(uint32) * MAX_KILL_CREDIT);
+-    queryTemp.Stats.CreatureDisplayID[0] = Modelid1;
+-    queryTemp.Stats.CreatureDisplayID[1] = Modelid2;
+-    queryTemp.Stats.CreatureDisplayID[2] = Modelid3;
+-    queryTemp.Stats.CreatureDisplayID[3] = Modelid4;
++    queryTemp.Stats.CreatureDisplayID[0] = sObjectMgr->GetCreatureDisplay(Modelid1);
++    queryTemp.Stats.CreatureDisplayID[1] = sObjectMgr->GetCreatureDisplay(Modelid2);
++    queryTemp.Stats.CreatureDisplayID[2] = sObjectMgr->GetCreatureDisplay(Modelid3);
++    queryTemp.Stats.CreatureDisplayID[3] = sObjectMgr->GetCreatureDisplay(Modelid4);
+     queryTemp.Stats.HpMulti = ModHealth;
+     queryTemp.Stats.EnergyMulti = ModMana;
+     queryTemp.Stats.Leader = RacialLeader;
+@@ -314,6 +314,34 @@ void Creature::RemoveFromWorld()
+     }
+ }
+ 
++void Creature::SendMirrorSound(Player* target, uint8 type)
++{
++    int32 outfitId = GetOutfit();
++    if (outfitId < 0)
++    {
++        const CreatureOutfitContainer& outfits = sObjectMgr->GetCreatureOutfitMap();
++        auto it = outfits.find(-outfitId);
++        if (it != outfits.end() && it->second.npcsoundsid)
++        {
++            if (auto const* npcsounds = sNPCSoundsStore.LookupEntry(it->second.npcsoundsid))
++            {
++                switch (type)
++                {
++                case 0:
++                    PlayDistanceSound(npcsounds->hello, target);
++                    break;
++                case 1:
++                    PlayDistanceSound(npcsounds->goodbye, target);
++                    break;
++                case 2:
++                    PlayDistanceSound(npcsounds->pissed, target);
++                    break;
++                }
++            }
++        }
++    }
++}
++
+ void Creature::DisappearAndDie()
+ {
+     ForcedDespawn(0);
+@@ -487,7 +515,12 @@ bool Creature::InitEntry(uint32 entry, CreatureData const* data /*= nullptr*/)
+         return false;
+     }
+ 
+-    uint32 displayID = ObjectMgr::ChooseDisplayId(GetCreatureTemplate(), data);
++    SetOutfit(ObjectMgr::ChooseDisplayId(GetCreatureTemplate(), data));
++    uint32 displayID = sObjectMgr->GetCreatureDisplay(GetOutfit());
++    if (IsMirrorImage())
++        displayID = 11686; // invisible in beginning if a mirror image
++    RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++
+     CreatureModelInfo const* minfo = sObjectMgr->GetCreatureModelRandomGender(&displayID);
+     if (!minfo)                                             // Cancel load if no model defined
+     {
+@@ -564,6 +597,8 @@ bool Creature::UpdateEntry(uint32 entry, CreatureData const* data /*= nullptr*/,
+ 
+     SetUInt32Value(UNIT_FIELD_FLAGS, unit_flags);
+     SetUInt32Value(UNIT_FIELD_FLAGS_2, cInfo->unit_flags2);
++    if (IsMirrorImage())
++        new MirrorImageUpdate(this);
+ 
+     SetUInt32Value(UNIT_DYNAMIC_FLAGS, dynamicflags);
+ 
+@@ -1297,6 +1332,8 @@ void Creature::SaveToDB(uint32 mapid, uint8 spawnMask, uint32 phaseMask)
+     CreatureData& data = sObjectMgr->NewOrExistCreatureData(m_spawnId);
+ 
+     uint32 displayId = GetNativeDisplayId();
++    if (IsMirrorImage())
++        displayId = 0; // For mirror images dont save displayid, it comes from outfit
+     uint32 npcflag = GetUInt32Value(UNIT_NPC_FLAGS);
+     uint32 unit_flags = GetUInt32Value(UNIT_FIELD_FLAGS);
+     uint32 dynamicflags = GetUInt32Value(UNIT_DYNAMIC_FLAGS);
+@@ -1305,8 +1342,8 @@ void Creature::SaveToDB(uint32 mapid, uint8 spawnMask, uint32 phaseMask)
+     CreatureTemplate const* cinfo = GetCreatureTemplate();
+     if (cinfo)
+     {
+-        if (displayId == cinfo->Modelid1 || displayId == cinfo->Modelid2 ||
+-            displayId == cinfo->Modelid3 || displayId == cinfo->Modelid4)
++        if (displayId == sObjectMgr->GetCreatureDisplay(cinfo->Modelid1) || displayId == sObjectMgr->GetCreatureDisplay(cinfo->Modelid2) ||
++            displayId == sObjectMgr->GetCreatureDisplay(cinfo->Modelid3) || displayId == sObjectMgr->GetCreatureDisplay(cinfo->Modelid4))
+             displayId = 0;
+ 
+         if (npcflag == cinfo->npcflag)
+@@ -2031,6 +2068,8 @@ void Creature::Respawn(bool force)
+             {
+                 SetDisplayId(displayID);
+                 SetNativeDisplayId(displayID);
++                if (IsMirrorImage())
++                    new MirrorImageUpdate(this);
+             }
+ 
+             GetMotionMaster()->InitializeDefault();
+@@ -3187,6 +3226,34 @@ void Creature::ClearTextRepeatGroup(uint8 textGroup)
+         groupItr->second.clear();
+ }
+ 
++MirrorImageUpdate::MirrorImageUpdate(Creature* creature) : BasicEvent(), creature(creature)
++{
++    static uint32 delay = 1;
++    creature->m_Events.AddEvent(this, creature->m_Events.CalculateTime(delay));
++    creature->SetDisplayId(11686); // invisible in beginning if a mirror image
++    creature->RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++}
++
++bool MirrorImageUpdate::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
++{
++    // From AuraEffect::HandleAuraCloneCaster
++    int32 outfitId = creature->GetOutfit();
++    if (outfitId < 0)
++    {
++        const CreatureOutfitContainer& outfits = sObjectMgr->GetCreatureOutfitMap();
++        auto it = outfits.find(-outfitId);
++        if (it != outfits.end())
++        {
++            creature->SetDisplayId(it->second.displayId);
++            creature->SetFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++            return true;
++        }
++    }
++    creature->SetDisplayId(creature->GetNativeDisplayId());
++    creature->RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++    return true;
++}
++
+ bool Creature::CanGiveExperience() const
+ {
+     return !IsCritter()
+diff --git a/src/server/game/Entities/Creature/Creature.h b/src/server/game/Entities/Creature/Creature.h
+index f6424e2ec1..724b48c32c 100644
+--- a/src/server/game/Entities/Creature/Creature.h
++++ b/src/server/game/Entities/Creature/Creature.h
+@@ -69,6 +69,11 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
+         void SetObjectScale(float scale) override;
+         void SetDisplayId(uint32 modelId) override;
+ 
++        void SetOutfit(int32 outfit) { outfitId = outfit; };
++        int32 GetOutfit() const { return outfitId; };
++        bool IsMirrorImage() const { return outfitId < 0; };
++        void SendMirrorSound(Player* target, uint8 type);
++
+         void DisappearAndDie();
+ 
+         bool Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, uint32 entry, Position const& pos, CreatureData const* data = nullptr, uint32 vehId = 0, bool dynamic = false);
+@@ -434,6 +439,8 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
+         ObjectGuid m_suppressedTarget; // Stores the creature's "real" target while casting
+         float m_suppressedOrientation; // Stores the creature's "real" orientation while casting
+ 
++        int32 outfitId = 0;
++
+         time_t _lastDamagedTime; // Part of Evade mechanics
+         CreatureTextRepeatGroup m_textRepeat;
+ 
+@@ -468,4 +475,11 @@ class TC_GAME_API ForcedDespawnDelayEvent : public BasicEvent
+         Seconds const m_respawnTimer;
+ };
+ 
++struct MirrorImageUpdate : BasicEvent
++{
++    MirrorImageUpdate(Creature* creature);
++    bool Execute(uint64 /*e_time*/, uint32 /*p_time*/) override;
++    Creature* creature;
++};
++
+ #endif
+diff --git a/src/server/game/Entities/Creature/CreatureData.h b/src/server/game/Entities/Creature/CreatureData.h
+index deca558005..6735e51449 100644
+--- a/src/server/game/Entities/Creature/CreatureData.h
++++ b/src/server/game/Entities/Creature/CreatureData.h
+@@ -123,10 +123,10 @@ struct TC_GAME_API CreatureTemplate
+     uint32  Entry;
+     uint32  DifficultyEntry[MAX_DIFFICULTY - 1];
+     uint32  KillCredit[MAX_KILL_CREDIT];
+-    uint32  Modelid1;
+-    uint32  Modelid2;
+-    uint32  Modelid3;
+-    uint32  Modelid4;
++    int32  Modelid1;
++    int32  Modelid2;
++    int32  Modelid3;
++    int32  Modelid4;
+     std::string  Name;
+     std::string  Title;
+     std::string  IconName;
+@@ -182,8 +182,8 @@ struct TC_GAME_API CreatureTemplate
+     uint32  flags_extra;
+     uint32  ScriptID;
+     WorldPacket QueryData[TOTAL_LOCALES];
+-    uint32  GetRandomValidModelId() const;
+-    uint32  GetFirstValidModelId() const;
++    int32  GetRandomValidModelId() const;
++    int32  GetFirstValidModelId() const;
+     uint32  GetFirstInvisibleModel() const;
+     uint32  GetFirstVisibleModel() const;
+ 
+diff --git a/src/server/game/Globals/ObjectMgr.cpp b/src/server/game/Globals/ObjectMgr.cpp
+index 0275100e11..7ab4f2d99c 100644
+--- a/src/server/game/Globals/ObjectMgr.cpp
++++ b/src/server/game/Globals/ObjectMgr.cpp
+@@ -412,10 +412,10 @@ void ObjectMgr::LoadCreatureTemplate(Field* fields)
+     for (uint8 i = 0; i < MAX_KILL_CREDIT; ++i)
+         creatureTemplate.KillCredit[i] = fields[4 + i].GetUInt32();
+ 
+-    creatureTemplate.Modelid1         = fields[6].GetUInt32();
+-    creatureTemplate.Modelid2         = fields[7].GetUInt32();
+-    creatureTemplate.Modelid3         = fields[8].GetUInt32();
+-    creatureTemplate.Modelid4         = fields[9].GetUInt32();
++    creatureTemplate.Modelid1         = fields[6].GetInt32();
++    creatureTemplate.Modelid2         = fields[7].GetInt32();
++    creatureTemplate.Modelid3         = fields[8].GetInt32();
++    creatureTemplate.Modelid4         = fields[9].GetInt32();
+     creatureTemplate.Name             = fields[10].GetString();
+     creatureTemplate.Title            = fields[11].GetString();
+     creatureTemplate.IconName         = fields[12].GetString();
+@@ -817,66 +817,66 @@ void ObjectMgr::CheckCreatureTemplate(CreatureTemplate const* cInfo)
+ 
+     if (cInfo->Modelid1)
+     {
+-        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(cInfo->Modelid1);
++        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(sObjectMgr->GetCreatureDisplay(cInfo->Modelid1));
+         if (!displayEntry)
+         {
+-            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid1 id (%u), this can crash the client.", cInfo->Entry, cInfo->Modelid1);
++            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid1 id (%i), this can crash the client.", cInfo->Entry, cInfo->Modelid1);
+             const_cast<CreatureTemplate*>(cInfo)->Modelid1 = 0;
+         }
+         else
+             displayScaleEntry = displayEntry;
+ 
+-        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(cInfo->Modelid1);
++        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(cInfo->Modelid1));
+         if (!modelInfo)
+-            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid1` = %u listed by creature (Entry: %u).", cInfo->Modelid1, cInfo->Entry);
++            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid1` = %i listed by creature (Entry: %u).", cInfo->Modelid1, cInfo->Entry);
+     }
+ 
+     if (cInfo->Modelid2)
+     {
+-        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(cInfo->Modelid2);
++        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(sObjectMgr->GetCreatureDisplay(cInfo->Modelid2));
+         if (!displayEntry)
+         {
+-            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid2 id (%u), this can crash the client.", cInfo->Entry, cInfo->Modelid2);
++            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid2 id (%i), this can crash the client.", cInfo->Entry, cInfo->Modelid2);
+             const_cast<CreatureTemplate*>(cInfo)->Modelid2 = 0;
+         }
+         else if (!displayScaleEntry)
+             displayScaleEntry = displayEntry;
+ 
+-        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(cInfo->Modelid2);
++        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(cInfo->Modelid2));
+         if (!modelInfo)
+-            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid2` = %u listed by creature (Entry: %u).", cInfo->Modelid2, cInfo->Entry);
++            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid2` = %i listed by creature (Entry: %u).", cInfo->Modelid2, cInfo->Entry);
+     }
+ 
+     if (cInfo->Modelid3)
+     {
+-        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(cInfo->Modelid3);
++        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(sObjectMgr->GetCreatureDisplay(cInfo->Modelid3));
+         if (!displayEntry)
+         {
+-            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid3 id (%u), this can crash the client.", cInfo->Entry, cInfo->Modelid3);
++            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid3 id (%i), this can crash the client.", cInfo->Entry, cInfo->Modelid3);
+             const_cast<CreatureTemplate*>(cInfo)->Modelid3 = 0;
+         }
+         else if (!displayScaleEntry)
+             displayScaleEntry = displayEntry;
+ 
+-        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(cInfo->Modelid3);
++        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(cInfo->Modelid3));
+         if (!modelInfo)
+-            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid3` = %u listed by creature (Entry: %u).", cInfo->Modelid3, cInfo->Entry);
++            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid3` = %i listed by creature (Entry: %u).", cInfo->Modelid3, cInfo->Entry);
+     }
+ 
+     if (cInfo->Modelid4)
+     {
+-        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(cInfo->Modelid4);
++        CreatureDisplayInfoEntry const* displayEntry = sCreatureDisplayInfoStore.LookupEntry(sObjectMgr->GetCreatureDisplay(cInfo->Modelid4));
+         if (!displayEntry)
+         {
+-            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid4 id (%u), this can crash the client.", cInfo->Entry, cInfo->Modelid4);
++            TC_LOG_ERROR("sql.sql", "Creature (Entry: %u) lists non-existing Modelid4 id (%i), this can crash the client.", cInfo->Entry, cInfo->Modelid4);
+             const_cast<CreatureTemplate*>(cInfo)->Modelid4 = 0;
+         }
+         else if (!displayScaleEntry)
+             displayScaleEntry = displayEntry;
+ 
+-        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(cInfo->Modelid4);
++        CreatureModelInfo const* modelInfo = GetCreatureModelInfo(sObjectMgr->GetCreatureDisplay(cInfo->Modelid4));
+         if (!modelInfo)
+-            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid4` = %u listed by creature (Entry: %u).", cInfo->Modelid4, cInfo->Entry);
++            TC_LOG_ERROR("sql.sql", "No model data exist for `Modelid4` = %i listed by creature (Entry: %u).", cInfo->Modelid4, cInfo->Entry);
+     }
+ 
+     if (!displayScaleEntry)
+@@ -1346,7 +1346,7 @@ CreatureModelInfo const* ObjectMgr::GetCreatureModelInfo(uint32 modelId) const
+     return nullptr;
+ }
+ 
+-uint32 ObjectMgr::ChooseDisplayId(CreatureTemplate const* cinfo, CreatureData const* data /*= nullptr*/)
++int32 ObjectMgr::ChooseDisplayId(CreatureTemplate const* cinfo, CreatureData const* data /*= nullptr*/)
+ {
+     // Load creature model (display id)
+     if (data && data->displayid)
+@@ -6320,7 +6320,7 @@ uint32 ObjectMgr::GetTaxiMountDisplayId(uint32 id, uint32 team, bool allowed_alt
+         CreatureTemplate const* mount_info = GetCreatureTemplate(mount_entry);
+         if (mount_info)
+         {
+-            mount_id = mount_info->GetRandomValidModelId();
++            mount_id = sObjectMgr->GetCreatureDisplay(mount_info->GetRandomValidModelId());
+             if (!mount_id)
+             {
+                 TC_LOG_ERROR("sql.sql", "No displayid found for the taxi mount with the entry %u! Can't load it!", mount_entry);
+@@ -8431,6 +8431,101 @@ SkillRangeType GetSkillRangeType(SkillRaceClassInfoEntry const* rcEntry)
+     return SKILL_RANGE_LEVEL;
+ }
+ 
++void ObjectMgr::LoadCreatureOutfits()
++{
++    uint32 oldMSTime = getMSTime();
++
++    _creatureOutfitStore.clear();   // for reload case (test only)
++
++    QueryResult result = WorldDatabase.Query("SELECT entry, npcsoundsid, race, class, gender, skin, face, hair, haircolor, facialhair, "
++        "head, shoulders, body, chest, waist, "
++        "legs, feet, wrists, hands, back, tabard, "
++        "guildid FROM creature_template_outfits");
++
++    if (!result)
++    {
++        TC_LOG_ERROR("server.loading", ">> Loaded 0 creature outfits. DB table `creature_template_outfits` is empty!");
++        return;
++    }
++
++    uint32 count = 0;
++
++    do
++    {
++        Field* fields = result->Fetch();
++
++        uint32 i = 0;
++        uint32 entry   = fields[i++].GetUInt32();
++
++        CreatureOutfit co;
++
++        co.npcsoundsid = fields[i++].GetUInt32();
++        if (co.npcsoundsid && !sNPCSoundsStore.LookupEntry(co.npcsoundsid))
++        {
++            TC_LOG_ERROR("server.loading", ">> Outfit entry %u in `creature_template_outfits` has incorrect npcsoundsid (%u). Using 0.", entry, co.npcsoundsid);
++            co.npcsoundsid = 0;
++        }
++        co.race         = fields[i++].GetUInt8();
++        const ChrRacesEntry* rEntry = sChrRacesStore.LookupEntry(co.race);
++        if (!rEntry)
++        {
++            TC_LOG_ERROR("server.loading", ">> Outfit entry %u in `creature_template_outfits` has incorrect race (%u).", entry, uint32(co.race));
++            continue;
++        }
++
++        co.Class = fields[i++].GetUInt8();
++        const ChrClassesEntry* cEntry = sChrClassesStore.LookupEntry(co.Class);
++        if (!cEntry)
++        {
++            TC_LOG_ERROR("server.loading", ">> Outfit entry %u in `creature_template_outfits` has incorrect class (%u).", entry, uint32(co.Class));
++            continue;
++        }
++
++        co.gender       = fields[i++].GetUInt8();
++        switch (co.gender)
++        {
++        case GENDER_FEMALE: co.displayId = rEntry->model_f; break;
++        case GENDER_MALE:   co.displayId = rEntry->model_m; break;
++        default:
++            TC_LOG_ERROR("server.loading", ">> Outfit entry %u in `creature_template_outfits` has invalid gender %u", entry, uint32(co.gender));
++            continue;
++        }
++
++        co.skin         = fields[i++].GetUInt8();
++        co.face         = fields[i++].GetUInt8();
++        co.hair         = fields[i++].GetUInt8();
++        co.haircolor    = fields[i++].GetUInt8();
++        co.facialhair   = fields[i++].GetUInt8();
++        for (uint32 j = 0; j < CreatureOutfit::max_outfit_displays; ++j)
++        {
++            int32 displayInfo = fields[i++].GetInt32();
++            if (displayInfo > 0) // entry
++            {
++                uint32 item_entry = static_cast<uint32>(displayInfo);
++                if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item_entry))
++                    co.outfit[j] = proto->DisplayInfoID;
++                else
++                {
++                    TC_LOG_ERROR("server.loading", ">> Outfit entry %u in `creature_template_outfits` has invalid item entry: %u. Ignoring.", entry, item_entry);
++                    co.outfit[j] = 0;
++                }
++            }
++            else // display
++            {
++                co.outfit[j] = static_cast<uint32>(-displayInfo);
++            }
++        }
++        co.guild = fields[i++].GetUInt32();
++
++        _creatureOutfitStore[entry] = co;
++
++        ++count;
++    }
++    while (result->NextRow());
++
++    TC_LOG_INFO("server.loading", ">> Loaded %u creature outfits in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
++}
++
+ void ObjectMgr::LoadGameTele()
+ {
+     uint32 oldMSTime = getMSTime();
+@@ -9662,6 +9757,19 @@ PlayerInfo const* ObjectMgr::GetPlayerInfo(uint32 race, uint32 class_) const
+     return info.get();
+ }
+ 
++uint32 ObjectMgr::GetCreatureDisplay(int32 modelid) const
++{
++    if (modelid >= 0)
++        return modelid;
++
++    const CreatureOutfitContainer& outfits = GetCreatureOutfitMap();
++    CreatureOutfitContainer::const_iterator it = outfits.find(-modelid);
++    if (it != outfits.end())
++        return 11686; // invisible for mirror image
++
++    return 0;
++}
++
+ void ObjectMgr::LoadGameObjectQuestItems()
+ {
+     uint32 oldMSTime = getMSTime();
+diff --git a/src/server/game/Globals/ObjectMgr.h b/src/server/game/Globals/ObjectMgr.h
+index ee423badea..e44d97f243 100644
+--- a/src/server/game/Globals/ObjectMgr.h
++++ b/src/server/game/Globals/ObjectMgr.h
+@@ -171,6 +171,28 @@ struct GameTele
+ 
+ typedef std::unordered_map<uint32, GameTele> GameTeleContainer;
+ 
++struct CreatureOutfit
++{
++    // Remember to change DB query too!
++    static constexpr uint32 max_outfit_displays = 11;
++
++    uint8 race;
++    uint8 Class;
++    uint8 gender;
++    uint8 face;
++    uint8 skin;
++    uint8 hair;
++    uint8 facialhair;
++    uint8 haircolor;
++    uint64 guild;
++    uint32 npcsoundsid;
++
++    uint32 displayId;
++    uint32 outfit[max_outfit_displays];
++};
++
++typedef std::unordered_map<uint32, CreatureOutfit> CreatureOutfitContainer;
++
+ enum ScriptsType
+ {
+     SCRIPTS_FIRST = 1,
+@@ -937,7 +959,7 @@ class TC_GAME_API ObjectMgr
+         CreatureTemplateContainer const& GetCreatureTemplates() const { return _creatureTemplateStore; }
+         CreatureModelInfo const* GetCreatureModelInfo(uint32 modelId) const;
+         CreatureModelInfo const* GetCreatureModelRandomGender(uint32* displayID) const;
+-        static uint32 ChooseDisplayId(CreatureTemplate const* cinfo, CreatureData const* data = nullptr);
++        static int32 ChooseDisplayId(CreatureTemplate const* cinfo, CreatureData const* data = nullptr);
+         static void ChooseCreatureFlags(CreatureTemplate const* cinfo, uint32& npcflag, uint32& unit_flags, uint32& dynamicflags, CreatureData const* data = nullptr);
+         EquipmentInfo const* GetEquipmentInfo(uint32 entry, int8& id) const;
+         CreatureAddon const* GetCreatureAddon(ObjectGuid::LowType lowguid) const;
+@@ -947,6 +969,7 @@ class TC_GAME_API ObjectMgr
+         CreatureAddon const* GetCreatureTemplateAddon(uint32 entry) const;
+         CreatureMovementData const* GetCreatureMovementOverride(ObjectGuid::LowType spawnId) const;
+         ItemTemplate const* GetItemTemplate(uint32 entry) const;
++        uint32 GetCreatureDisplay(int32 modelid) const;
+         ItemTemplateContainer const& GetItemTemplateStore() const { return _itemTemplateStore; }
+ 
+         ItemSetNameEntry const* GetItemSetNameEntry(uint32 itemId) const
+@@ -1205,6 +1228,7 @@ class TC_GAME_API ObjectMgr
+ 
+         void LoadNPCSpellClickSpells();
+ 
++        void LoadCreatureOutfits();
+         void LoadGameTele();
+ 
+         void LoadGossipMenu();
+@@ -1440,6 +1464,8 @@ class TC_GAME_API ObjectMgr
+         bool AddGameTele(GameTele& data);
+         bool DeleteGameTele(std::string const& name);
+ 
++        const CreatureOutfitContainer& GetCreatureOutfitMap() const { return _creatureOutfitStore; }
++
+         TrainerSpellData const* GetNpcTrainerSpells(uint32 entry) const
+         {
+             CacheTrainerSpellContainer::const_iterator  iter = _cacheTrainerSpellStore.find(entry);
+@@ -1594,6 +1620,8 @@ class TC_GAME_API ObjectMgr
+         PageTextContainer _pageTextStore;
+         InstanceTemplateContainer _instanceTemplateStore;
+ 
++        CreatureOutfitContainer _creatureOutfitStore;
++
+     private:
+         void LoadScripts(ScriptsType type);
+         void LoadQuestRelationsHelper(QuestRelations& map, QuestRelationsReverse* reverseMap, std::string const& table, bool starter, bool go);
+diff --git a/src/server/game/Handlers/AuctionHouseHandler.cpp b/src/server/game/Handlers/AuctionHouseHandler.cpp
+index a95af0a143..25c83f89db 100644
+--- a/src/server/game/Handlers/AuctionHouseHandler.cpp
++++ b/src/server/game/Handlers/AuctionHouseHandler.cpp
+@@ -28,6 +28,7 @@
+ #include "Language.h"
+ #include "Log.h"
+ #include "Mail.h"
++#include "Map.h"
+ #include "ObjectAccessor.h"
+ #include "ObjectMgr.h"
+ #include "Player.h"
+@@ -42,6 +43,11 @@ void WorldSession::HandleAuctionHelloOpcode(WorldPacket& recvData)
+     ObjectGuid guid;                                            //NPC guid
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
+     if (!unit)
+     {
+diff --git a/src/server/game/Handlers/GuildHandler.cpp b/src/server/game/Handlers/GuildHandler.cpp
+index 91a34bdd51..dfb9a051e5 100644
+--- a/src/server/game/Handlers/GuildHandler.cpp
++++ b/src/server/game/Handlers/GuildHandler.cpp
+@@ -18,9 +18,11 @@
+ 
+ #include "WorldSession.h"
+ #include "Common.h"
++#include "Creature.h"
+ #include "Guild.h"
+ #include "GuildMgr.h"
+ #include "Log.h"
++#include "Map.h"
+ #include "ObjectMgr.h"
+ #include "Player.h"
+ #include "WorldPacket.h"
+@@ -326,6 +328,11 @@ void WorldSession::HandleGuildBankerActivate(WorldPacket& recvData)
+     TC_LOG_DEBUG("guild", "CMSG_GUILD_BANKER_ACTIVATE [%s]: [%s] AllSlots: %u"
+         , GetPlayerInfo().c_str(), guid.ToString().c_str(), sendAllSlots);
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Guild* const guild = GetPlayer()->GetGuild();
+     if (!guild)
+     {
+diff --git a/src/server/game/Handlers/ItemHandler.cpp b/src/server/game/Handlers/ItemHandler.cpp
+index a968536c6c..bc013ebbe2 100644
+--- a/src/server/game/Handlers/ItemHandler.cpp
++++ b/src/server/game/Handlers/ItemHandler.cpp
+@@ -24,6 +24,7 @@
+ #include "Opcodes.h"
+ #include "Item.h"
+ #include "Log.h"
++#include "Map.h"
+ #include "ObjectMgr.h"
+ #include "Player.h"
+ #include "SpellInfo.h"
+@@ -603,6 +604,11 @@ void WorldSession::HandleListInventoryOpcode(WorldPacket& recvData)
+ 
+     TC_LOG_DEBUG("network", "WORLD: Recvd CMSG_LIST_INVENTORY");
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     SendListInventory(guid);
+ }
+ 
+diff --git a/src/server/game/Handlers/MiscHandler.cpp b/src/server/game/Handlers/MiscHandler.cpp
+index 763dc7e03f..c7f522ed16 100644
+--- a/src/server/game/Handlers/MiscHandler.cpp
++++ b/src/server/game/Handlers/MiscHandler.cpp
+@@ -491,6 +491,11 @@ void WorldSession::HandleSetSelectionOpcode(WorldPacket& recvData)
+     ObjectGuid guid;
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     _player->SetSelection(guid);
+ }
+ 
+diff --git a/src/server/game/Handlers/NPCHandler.cpp b/src/server/game/Handlers/NPCHandler.cpp
+index 5b50075d2f..50c2b272ea 100644
+--- a/src/server/game/Handlers/NPCHandler.cpp
++++ b/src/server/game/Handlers/NPCHandler.cpp
+@@ -56,6 +56,11 @@ void WorldSession::HandleTabardVendorActivateOpcode(WorldPacket& recvData)
+     ObjectGuid guid;
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_TABARDDESIGNER);
+     if (!unit)
+     {
+@@ -85,6 +90,11 @@ void WorldSession::HandleBankerActivateOpcode(WorldPacket& recvData)
+ 
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_BANKER);
+     if (!unit)
+     {
+@@ -119,6 +129,11 @@ void WorldSession::HandleTrainerListOpcode(WorldPacket& recvData)
+     ObjectGuid guid;
+ 
+     recvData >> guid;
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     SendTrainerList(guid);
+ }
+ 
+@@ -307,6 +322,11 @@ void WorldSession::HandleGossipHelloOpcode(WorldPacket& recvData)
+     ObjectGuid guid;
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_GOSSIP);
+     if (!unit)
+     {
+@@ -445,6 +465,11 @@ void WorldSession::HandleListStabledPetsOpcode(WorldPacket& recvData)
+ 
+     recvData >> npcGUID;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (npcGUID.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(npcGUID))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     if (!CheckStableMaster(npcGUID))
+         return;
+ 
+diff --git a/src/server/game/Handlers/PetitionsHandler.cpp b/src/server/game/Handlers/PetitionsHandler.cpp
+index b73e581ad0..705f77be3b 100644
+--- a/src/server/game/Handlers/PetitionsHandler.cpp
++++ b/src/server/game/Handlers/PetitionsHandler.cpp
+@@ -27,6 +27,7 @@
+ #include "GuildMgr.h"
+ #include "Item.h"
+ #include "Log.h"
++#include "Map.h"
+ #include "ObjectAccessor.h"
+ #include "ObjectMgr.h"
+ #include "Opcodes.h"
+@@ -748,6 +749,11 @@ void WorldSession::HandlePetitionShowListOpcode(WorldPacket& recvData)
+     ObjectGuid guid;
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     SendPetitionShowList(guid);
+ }
+ 
+diff --git a/src/server/game/Handlers/QuestHandler.cpp b/src/server/game/Handlers/QuestHandler.cpp
+index 01287df005..1c13f7a6c7 100644
+--- a/src/server/game/Handlers/QuestHandler.cpp
++++ b/src/server/game/Handlers/QuestHandler.cpp
+@@ -27,6 +27,7 @@
+ #include "GossipDef.h"
+ #include "Group.h"
+ #include "Log.h"
++#include "Map.h"
+ #include "ObjectAccessor.h"
+ #include "ObjectMgr.h"
+ #include "Player.h"
+@@ -80,6 +81,11 @@ void WorldSession::HandleQuestgiverHelloOpcode(WorldPacket& recvData)
+ 
+     TC_LOG_DEBUG("network", "WORLD: Received CMSG_QUESTGIVER_HELLO %s", guid.ToString().c_str());
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_QUESTGIVER);
+     if (!creature)
+     {
+diff --git a/src/server/game/Handlers/SpellHandler.cpp b/src/server/game/Handlers/SpellHandler.cpp
+index a26574d787..393c0d7dda 100644
+--- a/src/server/game/Handlers/SpellHandler.cpp
++++ b/src/server/game/Handlers/SpellHandler.cpp
+@@ -606,6 +606,39 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
+     if (!unit)
+         return;
+ 
++    if (Creature* creature = unit->ToCreature())
++    {
++        int32 outfitId = creature->GetOutfit();
++        if (outfitId < 0)
++        {
++            const CreatureOutfitContainer& outfits = sObjectMgr->GetCreatureOutfitMap();
++            CreatureOutfitContainer::const_iterator it = outfits.find(-outfitId);
++            if (it != outfits.end())
++            {
++                CreatureOutfit const& outfit = it->second;
++                WorldPacket data(SMSG_MIRRORIMAGE_DATA, 68);
++                data << uint64(guid);
++                data << uint32(outfit.displayId);   // displayId
++                data << uint8(outfit.race);         // race
++                data << uint8(outfit.gender);       // gender
++                data << uint8(outfit.Class);        // class
++                data << uint8(outfit.skin);         // skin
++                data << uint8(outfit.face);         // face
++                data << uint8(outfit.hair);         // hair
++                data << uint8(outfit.haircolor);    // haircolor
++                data << uint8(outfit.facialhair);   // facialhair
++                data << uint32(outfit.guild);       // guildId
++
++                // item displays
++                for (uint32 i = 0; i < CreatureOutfit::max_outfit_displays; ++i)
++                    data << uint32(it->second.outfit[i]);
++
++                SendPacket(&data);
++                return;
++            }
++        }
++    }
++
+     if (!unit->HasAuraType(SPELL_AURA_CLONE_CASTER))
+         return;
+ 
+diff --git a/src/server/game/Handlers/TaxiHandler.cpp b/src/server/game/Handlers/TaxiHandler.cpp
+index 2845e72372..c40914e651 100644
+--- a/src/server/game/Handlers/TaxiHandler.cpp
++++ b/src/server/game/Handlers/TaxiHandler.cpp
+@@ -23,6 +23,7 @@
+ #include "DBCStores.h"
+ #include "FlightPathMovementGenerator.h"
+ #include "Log.h"
++#include "Map.h"
+ #include "MotionMaster.h"
+ #include "ObjectAccessor.h"
+ #include "ObjectMgr.h"
+@@ -68,6 +69,11 @@ void WorldSession::HandleTaxiQueryAvailableNodes(WorldPacket& recvData)
+     ObjectGuid guid;
+     recvData >> guid;
+ 
++#ifndef DISABLE_DRESSNPCS_CORESOUNDS
++    if (guid.IsAnyTypeCreature())
++        if (Creature* creature = _player->GetMap()->GetCreature(guid))
++            creature->SendMirrorSound(_player, 0);
++#endif
+     // cheating checks
+     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_FLIGHTMASTER);
+     if (!unit)
+diff --git a/src/server/game/Server/WorldSession.cpp b/src/server/game/Server/WorldSession.cpp
+index e49ee044dd..010a2f61da 100644
+--- a/src/server/game/Server/WorldSession.cpp
++++ b/src/server/game/Server/WorldSession.cpp
+@@ -1390,6 +1390,7 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
+         case CMSG_MESSAGECHAT:                          //   0               3.5
+         case CMSG_INSPECT:                              //   0               3.5
+         case CMSG_AREA_SPIRIT_HEALER_QUERY:             // not profiled
++        case CMSG_GET_MIRRORIMAGE_DATA:                 // not profiled
+         case CMSG_STANDSTATECHANGE:                     // not profiled
+         case MSG_RANDOM_ROLL:                           // not profiled
+         case CMSG_TIME_SYNC_RESP:                       // not profiled
+diff --git a/src/server/game/Spells/Auras/SpellAuraEffects.cpp b/src/server/game/Spells/Auras/SpellAuraEffects.cpp
+index d89a4eb501..9c5447bab9 100644
+--- a/src/server/game/Spells/Auras/SpellAuraEffects.cpp
++++ b/src/server/game/Spells/Auras/SpellAuraEffects.cpp
+@@ -2057,7 +2057,7 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode,
+                     uint32 model_id = 0;
+ 
+                     // choose a model, based on trigger flag
+-                    if (uint32 modelid = ObjectMgr::ChooseDisplayId(ci))
++                    if (uint32 modelid = sObjectMgr->GetCreatureDisplay(sObjectMgr->ChooseDisplayId(ci)))
+                         model_id = modelid;
+ 
+                     // Polymorph (sheep)
+@@ -2104,7 +2104,7 @@ void AuraEffect::HandleAuraTransform(AuraApplication const* aurApp, uint8 mode,
+                 uint32 cr_id = target->GetAuraEffectsByType(SPELL_AURA_MOUNTED).front()->GetMiscValue();
+                 if (CreatureTemplate const* ci = sObjectMgr->GetCreatureTemplate(cr_id))
+                 {
+-                    uint32 displayID = ObjectMgr::ChooseDisplayId(ci);
++                    uint32 displayID = sObjectMgr->GetCreatureDisplay(ObjectMgr::ChooseDisplayId(ci));
+                     sObjectMgr->GetCreatureModelRandomGender(&displayID);
+ 
+                     target->SetUInt32Value(UNIT_FIELD_MOUNTDISPLAYID, displayID);
+@@ -2586,7 +2586,7 @@ void AuraEffect::HandleAuraMounted(AuraApplication const* aurApp, uint8 mode, bo
+ 
+         if (CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureEntry))
+         {
+-            displayId = ObjectMgr::ChooseDisplayId(creatureInfo);
++            displayId = sObjectMgr->GetCreatureDisplay(ObjectMgr::ChooseDisplayId(creatureInfo));
+             sObjectMgr->GetCreatureModelRandomGender(&displayId);
+ 
+             vehicleId = creatureInfo->VehicleId;
+@@ -4609,7 +4609,7 @@ void AuraEffect::HandleAuraDummy(AuraApplication const* aurApp, uint8 mode, bool
+ 
+                         if (CreatureTemplate const* creatureInfo = sObjectMgr->GetCreatureTemplate(creatureEntry))
+                         {
+-                            uint32 displayID = ObjectMgr::ChooseDisplayId(creatureInfo);
++                            uint32 displayID = sObjectMgr->GetCreatureDisplay(sObjectMgr->ChooseDisplayId(creatureInfo));
+                             sObjectMgr->GetCreatureModelRandomGender(&displayID);
+ 
+                             target->SetUInt32Value(UNIT_FIELD_MOUNTDISPLAYID, displayID);
+diff --git a/src/server/game/World/World.cpp b/src/server/game/World/World.cpp
+index 82dbe507d3..fd0fe097d6 100644
+--- a/src/server/game/World/World.cpp
++++ b/src/server/game/World/World.cpp
+@@ -1769,6 +1769,9 @@ void World::SetInitialWorldSettings()
+     TC_LOG_INFO("server.loading", "Loading Creature Model Based Info Data...");
+     sObjectMgr->LoadCreatureModelInfo();
+ 
++    TC_LOG_INFO("server.loading", "Loading Creature template outfits...");     // must be before LoadCreatureTemplates
++    sObjectMgr->LoadCreatureOutfits();
++
+     TC_LOG_INFO("server.loading", "Loading Creature templates...");
+     sObjectMgr->LoadCreatureTemplates();
+ 
+diff --git a/src/server/scripts/Commands/cs_modify.cpp b/src/server/scripts/Commands/cs_modify.cpp
+index 814d25fe7a..0e6849c9e0 100644
+--- a/src/server/scripts/Commands/cs_modify.cpp
++++ b/src/server/scripts/Commands/cs_modify.cpp
+@@ -816,6 +816,9 @@ public:
+             return false;
+ 
+         target->SetDisplayId(display_id);
++        target->RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
++        if (Creature* crea = target->ToCreature())
++            crea->SetOutfit(display_id);
+ 
+         return true;
+     }
+diff --git a/src/server/scripts/Commands/cs_npc.cpp b/src/server/scripts/Commands/cs_npc.cpp
+index 0a2085b57d..2a5c56c4d7 100644
+--- a/src/server/scripts/Commands/cs_npc.cpp
++++ b/src/server/scripts/Commands/cs_npc.cpp
+@@ -979,6 +979,8 @@ public:
+ 
+         creature->SetDisplayId(displayId);
+         creature->SetNativeDisplayId(displayId);
++        creature->SetOutfit(displayId);
++        creature->RemoveFlag(UNIT_FIELD_FLAGS_2, UNIT_FLAG2_MIRROR_IMAGE);
+ 
+         creature->SaveToDB();
+ 
+diff --git a/src/server/scripts/Commands/cs_reload.cpp b/src/server/scripts/Commands/cs_reload.cpp
+index 660af91ed6..9dfda42ed8 100644
+--- a/src/server/scripts/Commands/cs_reload.cpp
++++ b/src/server/scripts/Commands/cs_reload.cpp
+@@ -28,6 +28,7 @@ EndScriptData */
+ #include "AuctionHouseMgr.h"
+ #include "BattlegroundMgr.h"
+ #include "Chat.h"
++#include "Creature.h"
+ #include "CreatureTextMgr.h"
+ #include "DatabaseEnv.h"
+ #include "DisableMgr.h"
+@@ -93,6 +94,7 @@ public:
+             { "creature_queststarter",         rbac::RBAC_PERM_COMMAND_RELOAD_CREATURE_QUESTSTARTER,            true,  &HandleReloadCreatureQuestStarterCommand,       "" },
+             { "creature_summon_groups",        rbac::RBAC_PERM_COMMAND_RELOAD_CREATURE_SUMMON_GROUPS,           true,  &HandleReloadCreatureSummonGroupsCommand,       "" },
+             { "creature_template",             rbac::RBAC_PERM_COMMAND_RELOAD_CREATURE_TEMPLATE,                true,  &HandleReloadCreatureTemplateCommand,           "" },
++            { "creature_template_outfits",     rbac::RBAC_PERM_COMMAND_RELOAD_CREATURE_TEMPLATE,                true,  &HandleReloadCreatureTemplateOutfitsCommand,    "" },
+             { "disables",                      rbac::RBAC_PERM_COMMAND_RELOAD_DISABLES,                         true,  &HandleReloadDisablesCommand,                   "" },
+             { "disenchant_loot_template",      rbac::RBAC_PERM_COMMAND_RELOAD_DISENCHANT_LOOT_TEMPLATE,         true,  &HandleReloadLootTemplatesDisenchantCommand,    "" },
+             { "event_scripts",                 rbac::RBAC_PERM_COMMAND_RELOAD_EVENT_SCRIPTS,                    true,  &HandleReloadEventScriptsCommand,               "" },
+@@ -201,6 +203,7 @@ public:
+ 
+         HandleReloadCreatureMovementOverrideCommand(handler, "");
+         HandleReloadCreatureSummonGroupsCommand(handler, "");
++        HandleReloadCreatureTemplateOutfitsCommand(handler, "");
+ 
+         HandleReloadVehicleAccessoryCommand(handler, "");
+         HandleReloadVehicleTemplateAccessoryCommand(handler, "");
+@@ -463,6 +466,22 @@ public:
+         return true;
+     }
+ 
++    static bool HandleReloadCreatureTemplateOutfitsCommand(ChatHandler* handler, const char* /*args*/)
++    {
++        TC_LOG_INFO("misc", "Loading Creature Outfits... (`creature_template_outfits`)");
++        sObjectMgr->LoadCreatureOutfits();
++        sMapMgr->DoForAllMaps([](Map* map)
++        {
++            for (auto e : map->GetCreatureBySpawnIdStore())
++            {
++                if (e.second->IsMirrorImage())
++                    new MirrorImageUpdate(e.second);
++            }
++        });
++        handler->SendGlobalGMSysMessage("DB table `creature_template_outfits` reloaded.");
++        return true;
++    }
++
+     static bool HandleReloadCreatureQuestStarterCommand(ChatHandler* handler, char const* /*args*/)
+     {
+         TC_LOG_INFO("misc", "Loading Quests Relations... (`creature_queststarter`)");
+diff --git a/src/server/shared/DataStores/DBCStructure.h b/src/server/shared/DataStores/DBCStructure.h
+index cf43e5bc01..346af3f969 100644
+--- a/src/server/shared/DataStores/DBCStructure.h
++++ b/src/server/shared/DataStores/DBCStructure.h
+@@ -1112,6 +1112,15 @@ struct NamesReservedEntry
+     int32       Language;                                   // 2
+ };
+ 
++struct NPCSoundsEntry
++{
++    uint32 Id;
++    uint32 hello;
++    uint32 goodbye;
++    uint32 pissed;
++    uint32 ack;
++};
++
+ #define MAX_OVERRIDE_SPELL 10
+ 
+ struct OverrideSpellDataEntry
+diff --git a/src/server/shared/DataStores/DBCfmt.h b/src/server/shared/DataStores/DBCfmt.h
+index 9de1c6a490..3094cc5954 100644
+--- a/src/server/shared/DataStores/DBCfmt.h
++++ b/src/server/shared/DataStores/DBCfmt.h
+@@ -93,6 +93,7 @@ char constexpr MapDifficultyEntryfmt[] = "diisxxxxxxxxxxxxxxxxiix";
+ char constexpr MovieEntryfmt[] = "nxx";
+ char constexpr NamesProfanityEntryfmt[] = "dsi";
+ char constexpr NamesReservedEntryfmt[] = "dsi";
++char constexpr NPCSoundsEntryfmt[] = "niiii";
+ char constexpr OverrideSpellDatafmt[] = "niiiiiiiiiix";
+ char constexpr QuestFactionRewardfmt[] = "niiiiiiiiii";
+ char constexpr QuestSortEntryfmt[] = "nxxxxxxxxxxxxxxxxx";
+-- 
+2.11.0
+

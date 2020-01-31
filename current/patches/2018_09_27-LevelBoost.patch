@@ -1,0 +1,286 @@
+From 6388b430f2607bc923e534575461aad7866ec20a Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Sun, 30 Sep 2018 19:34:38 -0500
+Subject: [PATCH] 2018_09_27-LevelBoost
+
+---
+ sql/LordPsyan-Patches/auth/auth.LevelBoost.sql     |   1 +
+ sql/LordPsyan-Patches/world/world.levelboost.sql   |   5 +
+ src/server/game/World/World.cpp                    |   5 +-
+ src/server/game/World/World.h                      |   3 +-
+ src/server/scripts/Custom/LevelBoost.cpp           | 149 +++++++++++++++++++++
+ src/server/scripts/Custom/custom_script_loader.cpp |   6 +-
+ src/server/worldserver/worldserver.conf.dist       |  12 ++
+ 7 files changed, 177 insertions(+), 4 deletions(-)
+ create mode 100644 sql/LordPsyan-Patches/auth/auth.LevelBoost.sql
+ create mode 100644 sql/LordPsyan-Patches/world/world.levelboost.sql
+ create mode 100644 src/server/scripts/Custom/LevelBoost.cpp
+
+diff --git a/sql/LordPsyan-Patches/auth/auth.LevelBoost.sql b/sql/LordPsyan-Patches/auth/auth.LevelBoost.sql
+new file mode 100644
+index 0000000000..df4615a27e
+--- /dev/null
++++ b/sql/LordPsyan-Patches/auth/auth.LevelBoost.sql
+@@ -0,0 +1 @@
++ALTER TABLE `account` ADD COLUMN `boost` TINYINT(1) NOT NULL DEFAULT 0;
+\ No newline at end of file
+diff --git a/sql/LordPsyan-Patches/world/world.levelboost.sql b/sql/LordPsyan-Patches/world/world.levelboost.sql
+new file mode 100644
+index 0000000000..ca899b6eee
+--- /dev/null
++++ b/sql/LordPsyan-Patches/world/world.levelboost.sql
+@@ -0,0 +1,5 @@
++-- Creature_template entry. Make sure entry number does not conflict.
++DELETE FROM `creature_template` WHERE `entry` = 60003;
++
++INSERT INTO `creature_template` (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `modelid1`, `modelid2`, `modelid3`, `modelid4`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `scale`, `rank`, `dmgschool`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `trainer_type`, `trainer_spell`, `trainer_class`, `trainer_race`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `resistance1`, `resistance2`, `resistance3`, `resistance4`, `resistance5`, `resistance6`, `spell1`, `spell2`, `spell3`, `spell4`, `spell5`, `spell6`, `spell7`, `spell8`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `DamageModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `mechanic_immune_mask`, `flags_extra`, `ScriptName`, `VerifiedBuild`) values
++('60003','0','0','0','0','0','2591','0','0','0','Some Girl','Level Boost','','0','80','80','0','35','1','1','1.14286','1','1','0','1500','0','1','1','1','0','2048','0','0','0','0','0','0','7','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','0','','0','1','1','1','1','1','1','0','0','1','0','0','LevelBoost','0');
+diff --git a/src/server/game/World/World.cpp b/src/server/game/World/World.cpp
+index 82dbe507d3..2b1cb2a5eb 100644
+--- a/src/server/game/World/World.cpp
++++ b/src/server/game/World/World.cpp
+@@ -1273,7 +1273,10 @@ void World::LoadConfigSettings(bool reload)
+     // 26
+     // 27
+     // 28
+-    // 29
++
++    // LevelBoost
++    m_int_configs[CONFIG_LEVELBOOST_GOLDAMOUNT] = sConfigMgr->GetIntDefault("LevelBoost.GoldAmount",0);
++    m_bool_configs[CONFIG_LEVELBOOST_ENABLE] = sConfigMgr->GetBoolDefault("LevelBoost.EnableInstant80", true);
+     // 30
+     // 31
+     // 32
+diff --git a/src/server/game/World/World.h b/src/server/game/World/World.h
+index c0cb58fc77..ad68b3fa03 100644
+--- a/src/server/game/World/World.h
++++ b/src/server/game/World/World.h
+@@ -223,6 +223,7 @@ enum WorldBoolConfigs
+     CONFIG_CACHE_DATA_QUERIES,
+     CONFIG_CHECK_GOBJECT_LOS,
+     CONFIG_RESPAWN_DYNAMIC_ESCORTNPC,
++    CONFIG_LEVELBOOST_ENABLE,
+     BOOL_CONFIG_VALUE_COUNT
+ };
+ 
+@@ -484,7 +485,7 @@ enum WorldIntConfigs
+     // 82
+     // 83
+     // 84
+-    // 85
++    CONFIG_LEVELBOOST_GOLDAMOUNT,
+     // 86
+     // 87
+     // 88
+diff --git a/src/server/scripts/Custom/LevelBoost.cpp b/src/server/scripts/Custom/LevelBoost.cpp
+new file mode 100644
+index 0000000000..616fdababa
+--- /dev/null
++++ b/src/server/scripts/Custom/LevelBoost.cpp
+@@ -0,0 +1,149 @@
++/*
++ * Created by LordPsyan for Realmsofwarcraft.com
++ *
++ */
++
++#include "ScriptMgr.h"
++#include "ScriptedCreature.h"
++#include "ScriptedGossip.h"
++#include "DatabaseEnv.h"
++#include "WorldSession.h"
++#include "World.h"
++#include "Player.h"
++
++#define GOSSIP_SENDER_MAIN      1000
++
++class LevelBoost : public CreatureScript
++{
++public:
++    LevelBoost() : CreatureScript("LevelBoost") {}
++
++static bool OnGossipHello(Player* pPlayer, Creature* pCreature)
++{
++    if (pPlayer->GetTeam() == ALLIANCE)
++    {
++        AddGossipItemFor(pPlayer, 7,  "Instant Levels ->", GOSSIP_SENDER_MAIN, 1000);
++        AddGossipItemFor(pPlayer, 7, "<- Main Menu", GOSSIP_SENDER_MAIN, 3000);
++    }
++    else
++    {
++        AddGossipItemFor(pPlayer, 7, "Instant Levels ->", GOSSIP_SENDER_MAIN, 1000);
++        AddGossipItemFor(pPlayer, 7, "<- Main Menu", GOSSIP_SENDER_MAIN, 3000);
++    }
++    SendGossipMenuFor(pPlayer, DEFAULT_GOSSIP_MESSAGE, pCreature->GetGUID());
++    return true;
++}
++
++void static SendDefaultMenu(Player* pPlayer, Creature* pCreature, uint32 uiAction)
++{
++    bool EnableInstant80 = sWorld->getBoolConfig(CONFIG_LEVELBOOST_ENABLE);
++
++    if(!EnableInstant80)
++    {
++        CloseGossipMenuFor(pPlayer);
++        pCreature->Say("I am currently closed until further notice.", LANG_UNIVERSAL);
++        return;
++    }
++
++    if (pPlayer->IsInCombat())
++    {
++        CloseGossipMenuFor(pPlayer);
++        pCreature->Say("You are in combat!", LANG_UNIVERSAL);
++        return;
++    }
++
++QueryResult result;
++result = LoginDatabase.PQuery("SELECT `boost` FROM `account` WHERE `id` = %d LIMIT 1", pPlayer->GetSession()->GetAccountId());
++
++    if (!result)
++    {
++        CloseGossipMenuFor(pPlayer);
++        pCreature->Say("You have a problem with your database.", LANG_UNIVERSAL);
++        return;
++    } else {
++        Field *fields = result->Fetch();
++        uint8 getBoost = fields[0].GetInt8();
++
++    if(getBoost == 1)
++    {
++        CloseGossipMenuFor(pPlayer);
++        pCreature->Say("You have already received your free instant levels on another character.", LANG_UNIVERSAL);
++        return;
++    }
++
++uint32 myMoney = sWorld->getIntConfig(CONFIG_LEVELBOOST_GOLDAMOUNT);
++
++switch(uiAction)
++{
++case 3000:
++        AddGossipItemFor(pPlayer, 7, "Instant Levels ->", GOSSIP_SENDER_MAIN, 1000);
++        AddGossipItemFor(pPlayer, 7, "<- Main Menu", GOSSIP_SENDER_MAIN, 3000);
++        SendGossipMenuFor(pPlayer, DEFAULT_GOSSIP_MESSAGE, pCreature->GetGUID());
++break;
++case 1001:
++        pPlayer->ModifyMoney(myMoney * 10000);
++        pPlayer->GiveLevel(80);
++        LoginDatabase.PExecute("UPDATE `account` SET `boost` = 1 WHERE `id` = %d", pPlayer->GetSession()->GetAccountId());
++        CloseGossipMenuFor(pPlayer);
++break;
++case 1000:
++        if(pPlayer->getLevel() < 80)
++        {
++            AddGossipItemFor(pPlayer, 7, "Instant 80 ->", GOSSIP_SENDER_MAIN, 1001);
++            AddGossipItemFor(pPlayer, 7, "<- Main Menu", GOSSIP_SENDER_MAIN, 3000);
++            SendGossipMenuFor(pPlayer, DEFAULT_GOSSIP_MESSAGE, pCreature->GetGUID());
++        } else {
++            CloseGossipMenuFor(pPlayer);
++            pCreature->Say("You are already level 80.", LANG_UNIVERSAL);
++            return;
++        }
++break;
++ CloseGossipMenuFor(pPlayer);
++}
++}
++}
++
++static bool OnGossipSelect(Player* pPlayer, Creature* pCreature, uint32 uiSender, uint32 uiAction)
++{
++    pPlayer->PlayerTalkClass->ClearMenus();
++    if (uiSender == GOSSIP_SENDER_MAIN)
++    SendDefaultMenu(pPlayer, pCreature, uiAction);
++    return true;
++}
++
++static bool OnGossipSelectCode(Player* player, Creature* m_creature, uint32 sender, uint32 action, char const* code)
++    {
++        player->PlayerTalkClass->ClearMenus();
++        return true;
++    }
++struct MyAI : public ScriptedAI
++    {
++        MyAI(Creature* m_creature) : ScriptedAI(m_creature) { }
++        bool GossipHello(Player* player) override
++        {
++            return OnGossipHello(player, me);
++        }
++        bool GossipSelect(Player* player, uint32 menuId, uint32 gossipListId) override
++        {
++            uint32 sender = player->PlayerTalkClass->GetGossipOptionSender(gossipListId);
++            uint32 action = player->PlayerTalkClass->GetGossipOptionAction(gossipListId);
++            return OnGossipSelect(player, me, sender, action);
++        }
++        bool GossipSelectCode(Player* player, uint32 menuId, uint32 gossipListId, char const* code) override
++        {
++            uint32 sender = player->PlayerTalkClass->GetGossipOptionSender(gossipListId);
++            uint32 action = player->PlayerTalkClass->GetGossipOptionAction(gossipListId);
++            return OnGossipSelectCode(player, me, sender, action, code);
++        }
++    };
++
++CreatureAI* GetAI(Creature* m_creature) const override
++    {
++        return new MyAI(m_creature);
++    }
++};
++
++void AddSC_LevelBoost()
++{
++new LevelBoost();
++}
+diff --git a/src/server/scripts/Custom/custom_script_loader.cpp b/src/server/scripts/Custom/custom_script_loader.cpp
+index 5412cf1942..ced5b35c3d 100644
+--- a/src/server/scripts/Custom/custom_script_loader.cpp
++++ b/src/server/scripts/Custom/custom_script_loader.cpp
+@@ -141,7 +141,8 @@
+ // start123
+ // start124
+ // start125
+-// start126
++// Level Boost
++    void AddSC_LevelBoost();
+ // start127
+ // start128
+ // start129
+@@ -346,7 +347,8 @@ void AddCustomScripts()
+ // end123
+ // end124
+ // end125
+-// end126
++// Level Boost
++    AddSC_LevelBoost();
+ // end127
+ // end128
+ // end129
+diff --git a/src/server/worldserver/worldserver.conf.dist b/src/server/worldserver/worldserver.conf.dist
+index 6ee9e3158c..0e36df7bae 100644
+--- a/src/server/worldserver/worldserver.conf.dist
++++ b/src/server/worldserver/worldserver.conf.dist
+@@ -37,6 +37,7 @@ PrepatchGI.Added = 0
+ #    HOTSWAP SETTINGS
+ #    WARDEN SETTINGS
+ #    PLAYER INTERACTION
++#    LEVEL BOOST
+ #    CREATURE SETTINGS
+ #    SPAWN/RESPAWN SETTINGS
+ #    CHAT SETTINGS
+@@ -1585,6 +1586,17 @@ TalentsInspecting = 1
+ ###################################################################################################
+ 
+ ###################################################################################################
++#    LEVEL BOOST
++###################################################################################################
++
++LevelBoost.GoldAmount = 2000
++
++LevelBoost.EnableInstant80 = 1
++
++#
++###################################################################################################
++
++###################################################################################################
+ # CREATURE SETTINGS
+ #
+ #    ThreatRadius
+-- 
+2.11.0
+

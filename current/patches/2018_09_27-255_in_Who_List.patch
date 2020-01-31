@@ -1,0 +1,28 @@
+From 3d707e5835487b612141ef07b7e653fddedfcdb9 Mon Sep 17 00:00:00 2001
+From: LordPsyan <lordpsyan@gmail.com>
+Date: Fri, 28 Sep 2018 03:58:33 -0500
+Subject: [PATCH] 2018_09_27-255_in_Who_List
+
+---
+ src/server/game/Handlers/MiscHandler.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/server/game/Handlers/MiscHandler.cpp b/src/server/game/Handlers/MiscHandler.cpp
+index 763dc7e03f..c0583ff311 100644
+--- a/src/server/game/Handlers/MiscHandler.cpp
++++ b/src/server/game/Handlers/MiscHandler.cpp
+@@ -269,9 +269,10 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
+ 
+         // check if target's level is in level range
+         uint8 lvl = target.GetLevel();
++/* Remove check so Level 255 shows up in who list
+         if (lvl < levelMin || lvl > levelMax)
+             continue;
+-
++*/
+         // check if class matches classmask
+         uint8 class_ = target.GetClass();
+         if (!(classmask & (1 << class_)))
+-- 
+2.11.0
+
