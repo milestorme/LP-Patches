@@ -1,4 +1,4 @@
-All of these patches are compiled on Debian Linux. THey are tested for patchability and fully compiled before being added to the repository.
+All of these patches are compiled on Debian Linux. They are tested for patchability and fully compiled before being added to the repository.
 If you are having issues in windows, get Linux Tools and use the patch commands. For help, check out my youtube channel for tutorials on patching properly.
 
 YouTube: https://www.youtube.com/channel/UC5dtyqE5jGkVmuHo5dosHPQ
